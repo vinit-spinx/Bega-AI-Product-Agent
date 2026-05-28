@@ -64,6 +64,19 @@ builder.Services.AddScoped<SystemPromptBuilder>();
 builder.Services.AddScoped<IAgentOrchestrator, AgentOrchestrator>();
 
 // ── Ingestion (used by admin endpoint) ────────────────────────────────────────
+var ingestionOptions = config.GetSection(IngestionOptions.SectionName).Get<IngestionOptions>()
+    ?? new IngestionOptions();
+builder.Services.AddSingleton(ingestionOptions);
+builder.Services.AddSingleton(new IngestionRunOptions()); // no CLI flags in API context
+
+builder.Services.AddScoped<SpecNormalizer>(sp => new SpecNormalizer(
+    ingestionOptions.SpecsMappingPath,
+    sp.GetRequiredService<ILogger<SpecNormalizer>>()));
+builder.Services.AddScoped<JsonProductParser>();
+builder.Services.AddScoped<PdfTextExtractor>();
+builder.Services.AddScoped<TextChunker>(_ => new TextChunker(
+    ingestionOptions.ChunkSize,
+    ingestionOptions.ChunkOverlap));
 builder.Services.AddScoped<IIngestionPipeline, IngestionPipeline>();
 
 // ── Logging ───────────────────────────────────────────────────────────────────
