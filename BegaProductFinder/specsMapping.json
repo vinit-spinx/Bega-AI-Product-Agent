@@ -1,0 +1,30 @@
+{
+  "mappings": [
+    { "field": "Led",                  "canonicalKey": "WattageW",                "parseMode": "numeric_strip_unit" },
+    { "field": "SystemWattage_Double", "canonicalKey": "SystemWattageW",          "parseMode": "decimal" },
+    { "field": "LumenOutput_Double",   "canonicalKey": "LumenOutputLm",           "parseMode": "decimal" },
+    { "field": "BeamAngle",            "canonicalKey": "BeamAngleDeg",            "parseMode": "decimal_nullable" },
+    { "field": "ColorTemperature",     "canonicalKey": "ColorTemperatureOptions", "parseMode": "cct_list" },
+    { "field": "Voltage",              "canonicalKey": "VoltageSpec",             "parseMode": "string" },
+    { "field": "ControlProtocol",      "canonicalKey": "ControlProtocol",         "parseMode": "string" },
+    { "field": "Application",          "canonicalKey": "Application",             "parseMode": "string" },
+    { "field": "Distribution",         "canonicalKey": "LightDistribution",       "parseMode": "string_nullable" },
+    { "field": "DynamicLight",         "canonicalKey": "DynamicLight",            "parseMode": "string_nullable" },
+    { "field": "Finish",               "canonicalKey": "Finish",                  "parseMode": "string_nullable" },
+    { "field": "LeadTime",             "canonicalKey": "LeadTime",                "parseMode": "string" },
+    { "field": "Dnp",                  "canonicalKey": "DistributorNetPrice",     "parseMode": "decimal_nullable" },
+    { "field": "Msrp",                 "canonicalKey": "Msrp",                    "parseMode": "decimal_nullable" },
+    { "field": "Ada",                  "canonicalKey": "AdaCompliant",            "parseMode": "bool_from_int" },
+    { "field": "Express",              "canonicalKey": "ExpressDelivery",         "parseMode": "bool_from_int" }
+  ],
+  "furniture_group_slugs": [
+    "bench",
+    "seating",
+    "litter-bin",
+    "planter",
+    "bollard-furniture",
+    "modular-furniture",
+    "urban-elements",
+    "cycle-stand"
+  ]
+}

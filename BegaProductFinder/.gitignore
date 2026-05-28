@@ -1,0 +1,50 @@
+# ── .NET ─────────────────────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.swp
+*.log
+
+# Developer secrets — never commit these
+src/BegaProductFinder.API/appsettings.Development.json
+src/BegaProductFinder.Ingestion/appsettings.Development.json
+
+# EF Core migration snapshots generated on the developer machine — keep these
+# !src/BegaProductFinder.Infrastructure/Data/Migrations/
+
+# Published output
+publish/
+
+# ── Node / Next.js ────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.*.local
+
+# ── PDF download cache ────────────────────────────────────────────────────────
+# Adjust this path if you change Ingestion:PdfDownloadPath
+BegaData/
+*.pdf
+
+# Ingestion failure log
+ingestion_failures.log
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── JetBrains / VS Code ───────────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+!.vscode/extensions.json

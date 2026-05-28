@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-zinc-950 text-zinc-100;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-zinc-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-500;
+  }
+}
+
+@layer utilities {
+  .typing-dot-1 { animation: typing-dot 1.4s infinite ease-in-out; }
+  .typing-dot-2 { animation: typing-dot 1.4s infinite ease-in-out 0.2s; }
+  .typing-dot-3 { animation: typing-dot 1.4s infinite ease-in-out 0.4s; }
+}

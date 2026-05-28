@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <RootNamespace>BegaProductFinder.API</RootNamespace>
+    <AssemblyName>BegaProductFinder.API</AssemblyName>
+    <UserSecretsId>bega-product-finder-api</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BegaProductFinder.Core\BegaProductFinder.Core.csproj" />
+    <ProjectReference Include="..\BegaProductFinder.Infrastructure\BegaProductFinder.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- EF Core design-time for: dotnet ef migrations add / dotnet ef database update -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
+    <!-- OpenAPI / Swagger UI -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.11" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+  </ItemGroup>
+
+  <!-- Copy specsMapping.json from solution root to output directory -->
+  <ItemGroup>
+    <None Include="..\..\specsMapping.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

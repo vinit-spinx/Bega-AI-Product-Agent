@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BegaProductFinder.API/BegaProductFinder.API.csproj" />
+    <Project Path="src/BegaProductFinder.Core/BegaProductFinder.Core.csproj" />
+    <Project Path="src/BegaProductFinder.Infrastructure/BegaProductFinder.Infrastructure.csproj" />
+    <Project Path="src/BegaProductFinder.Ingestion/BegaProductFinder.Ingestion.csproj" />
+  </Folder>
+</Solution>

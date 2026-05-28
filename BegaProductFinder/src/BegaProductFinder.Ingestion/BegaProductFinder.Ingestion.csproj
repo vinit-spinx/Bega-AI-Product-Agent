@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>BegaProductFinder.Ingestion</RootNamespace>
+    <AssemblyName>BegaProductFinder.Ingestion</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BegaProductFinder.Core\BegaProductFinder.Core.csproj" />
+    <ProjectReference Include="..\BegaProductFinder.Infrastructure\BegaProductFinder.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Generic host: DI, configuration, logging in a console app -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Copy specsMapping.json from solution root to output directory -->
+  <ItemGroup>
+    <None Include="..\..\specsMapping.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Copy appsettings.json to output directory -->
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
