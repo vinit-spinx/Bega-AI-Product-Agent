@@ -3,7 +3,6 @@ using BegaProductFinder.Core.Models;
 using BegaProductFinder.Infrastructure.Data;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using NpgsqlTypes;
 using Pgvector;
 
 namespace BegaProductFinder.Infrastructure.Search;
@@ -57,10 +56,7 @@ public sealed class PgVectorSearchService : IVectorSearchService
         cmd.Parameters.AddWithValue("@catalog_number", catalogNumber);
         cmd.Parameters.AddWithValue("@chunk_source", chunkSource);
         cmd.Parameters.AddWithValue("@chunk_text", chunkText);
-        cmd.Parameters.Add(new NpgsqlParameter("@embedding", NpgsqlDbType.Unknown)
-        {
-            Value = new Vector(embedding)
-        });
+        cmd.Parameters.AddWithValue("@embedding", new Vector(embedding));
         cmd.Parameters.AddWithValue("@page_number", pageNumber.HasValue ? (object)pageNumber.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@chunk_index", chunkIndex);
 
@@ -98,10 +94,7 @@ public sealed class PgVectorSearchService : IVectorSearchService
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
 
-        cmd.Parameters.Add(new NpgsqlParameter("@query_vector", NpgsqlDbType.Unknown)
-        {
-            Value = new Vector(queryVector)
-        });
+        cmd.Parameters.AddWithValue("@query_vector", new Vector(queryVector));
         cmd.Parameters.AddWithValue("@top_k", topK);
 
         if (filterProductIds is { Length: > 0 })
