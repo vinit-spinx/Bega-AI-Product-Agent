@@ -384,3 +384,203 @@ BegaProductFinder/
 │   └── types/                          # TypeScript type definitions
 └── specsMapping.json                   # Spec field normalisation config
 ```
+
+
+Full Request Flow
+
+USER TYPES: "Recommend lighting for a 5-star hotel entrance"
+Layer 1 — Browser / React
+ChatInput.tsx
+User presses Enter or clicks Send → calls onSend(text) from props
+
+useChatSession.ts hook (sendMessage())
+
+Appends a user message and a blank assistant message (with isStreaming: true) to React state
+Sends POST /api/chat (the Next.js proxy) with body { sessionId: "uuid", message: "..." }
+Opens the response as a ReadableStream and reads SSE lines as they arrive
+Layer 2 — Next.js Proxy
+app/api/chat/route.ts
+Forwards the POST body to the .NET backend at:
+
+
+POST http://localhost:5000/api/chat/message
+Pipes the text/event-stream response body straight back to the browser with no buffering.
+
+Layer 3 — .NET API
+ChatEndpoints.cs (POST /api/chat/message)
+
+Sets response headers: Content-Type: text/event-stream, Cache-Control: no-cache
+Calls IAgentOrchestrator.StreamResponseAsync(sessionId, message)
+For every AgentStreamChunk yielded, serializes it and writes:
+
+data: {"type":"text_delta","content":"For"}\n\n
+and flushes immediately
+Layer 4 — Agent Orchestrator
+AgentOrchestrator.RunAsync()
+
+Step A — Load context
+
+
+ChatSessionService.GetHistoryAsync(sessionId, lastN: 10)
+  → SELECT MessagesJson FROM ChatSessions WHERE SessionId = @id
+  → Returns last 10 chat turns
+Step B — Build Claude request
+
+
+apiMessages = [
+  { role: "user", content: "<turn 1>" },
+  { role: "assistant", content: "<turn 1 reply>" },
+  ...history...
+  { role: "user", content: "Recommend lighting for a 5-star hotel entrance" }
+]
+
++ SystemPrompt (from SystemPromptBuilder)
++ 8 tool definitions (from AgentTools.GetDefinitions())
+Layer 5 — Claude API (streaming)
+StreamTurnAsync() sends:
+
+
+POST https://api.anthropic.com/v1/messages
+{
+  model: "claude-sonnet-4-20250514",
+  stream: true,
+  system: "You are an expert architectural lighting advisor...",
+  tools: [ search_products, get_product_detail, browse_by_hierarchy,
+           filter_by_specs, get_spec_document_context, recommend_for_project,
+           generate_bill_of_materials, search_furniture ],
+  messages: [ ...history + user message ]
+}
+Claude reads the query, decides to call recommend_for_project, and streams back SSE events:
+
+
+event: content_block_start  → type: "tool_use", name: "recommend_for_project"
+event: content_block_delta  → partial_json: '{"project_type":"5-star hotel"...'
+event: content_block_delta  → partial_json: ',"areas":["entrance","pathways"...'
+event: content_block_stop
+event: message_delta        → stop_reason: "tool_use"
+event: message_stop
+The orchestrator collects the complete tool input JSON and does not stream any text yet — it was all tool setup.
+
+Layer 6 — Tool Dispatch
+DispatchToolAsync("recommend_for_project", input) →
+
+ProjectRecommendationService.RecommendAsync()
+Resolves areas for "5-star hotel": ["entrance", "pathways", "facade", "pool area", "landscape"]
+
+Fires 5 parallel tasks via Task.WhenAll, one per area. Each task calls:
+
+
+ProductSearchService.SearchByNaturalLanguageAsync(
+  "BEGA luminaire for entrance 5-star hotel project")
+Which runs the hybrid search:
+
+
+1. OllamaEmbeddingService.EmbedAsync(query)
+   → POST http://localhost:11434/api/embeddings
+   → Returns float[768]
+
+2. PgVectorSearchService.SearchAsync(vector, topK: 20)
+   → SELECT product_id, 1-(embedding <=> @vec) AS score
+     FROM product_chunks ORDER BY embedding <=> @vec LIMIT 20
+   → Returns candidate ProductIds
+
+3. ProductSearchService.FetchProductsFromSqlAsync(candidateIds, filters)
+   → SELECT * FROM Products WHERE ProductId IN (...)
+     AND GroupSlug NOT IN ('bench','seating',...)
+   → Returns full product rows, filtered
+
+4. Merge vector scores back → sort by MatchScore → return top 5
+Returns List<ProjectAreaRecommendation> with 5 areas, each containing up to 5 products.
+
+Back in the orchestrator, this yields an SSE chunk:
+
+
+new AgentStreamChunk {
+  Type = AgentStreamEventType.ProjectRecommendation,
+  ProjectAreas = recommendations
+}
+→ immediately flushed to browser as:
+
+
+data: {"type":"project_recommendation","areas":[{"areaName":"entrance","recommendedProducts":[...],...}]}\n\n
+Layer 7 — Second Claude turn
+The orchestrator appends tool results to the conversation and calls Claude again:
+
+
+apiMessages += [
+  { role: "assistant", content: [{ type: "tool_use", id: "...", name: "recommend_for_project", input: {...} }] },
+  { role: "user",      content: [{ type: "tool_result", tool_use_id: "...", content: "<json results>" }] }
+]
+Claude now reads the results and writes the final prose response:
+
+
+event: content_block_start  → type: "text"
+event: content_block_delta  → text: "For"           ← streamed immediately
+event: content_block_delta  → text: " a 5-star"     ← streamed immediately
+event: content_block_delta  → text: " hotel..."
+...
+event: message_stop         → stop_reason: "end_turn"
+Each text_delta is yielded immediately as:
+
+
+data: {"type":"text_delta","content":"For"}\n\n
+data: {"type":"text_delta","content":" a 5-star"}\n\n
+Then the loop ends (no more tool calls), and the orchestrator yields Done.
+
+Layer 8 — Session Persistence
+
+ChatSessionService.SaveAsync(session)
+  → UPDATE ChatSessions SET MessagesJson = '...', LastActivityAt = now
+    WHERE SessionId = @id
+Layer 9 — Back in the Browser
+useChatSession SSE parser processes each line:
+
+SSE event received	State update	Re-render effect
+text_delta × N	Appends to message.content	Text appears token by token in StreamingText
+project_recommendation	Sets message.projectAreas	ProjectAreaCard list renders
+done	Sets isStreaming: false	Blinking cursor disappears
+MessageBubble renders the final message:
+
+Prose text via StreamingText
+5 × ProjectAreaCard, each containing ProductCard tiles with images, specs, and doc links
+Summary diagram
+
+Browser ChatInput
+    │  POST /api/chat (fetch, ReadableStream)
+    ▼
+Next.js /api/chat/route.ts  (SSE proxy — pipes body through)
+    │  POST /api/chat/message
+    ▼
+.NET ChatEndpoints           (sets SSE headers, iterates IAsyncEnumerable)
+    │
+    ▼
+AgentOrchestrator.RunAsync()
+    ├─► ChatSessionService   → SQL Server  (load history)
+    ├─► SystemPromptBuilder  (build system prompt)
+    ├─► AgentTools           (8 tool definitions)
+    │
+    ├─► Claude API (stream) ──► text_delta chunks ──► SSE ──► browser
+    │       │ stop_reason: tool_use
+    │       ▼
+    ├─► DispatchToolAsync("recommend_for_project")
+    │       │
+    │       ▼
+    │   ProjectRecommendationService ──► Task.WhenAll(5 areas)
+    │       │
+    │       └─► ProductSearchService (per area)
+    │               ├─► OllamaEmbeddingService  → Ollama (embed query)
+    │               ├─► PgVectorSearchService   → PostgreSQL pgvector (ANN search)
+    │               └─► SQL Server              (fetch + filter full rows)
+    │
+    ├─► SSE chunk: project_recommendation ──► browser
+    │
+    ├─► Claude API (stream, turn 2) ──► text_delta chunks ──► browser
+    │       stop_reason: end_turn
+    │
+    ├─► ChatSessionService → SQL Server  (save session)
+    └─► SSE chunk: done ──► browser
+
+Browser useChatSession hook
+    ├─ text_delta × N  → message.content grows → StreamingText renders
+    ├─ project_recommendation → message.projectAreas → ProjectAreaCard renders
+    └─ done → isStreaming: false → cursor disappears
