@@ -39,6 +39,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true,
         WriteIndented = false
     };
 
@@ -197,7 +198,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
         // Persist the user message and final assistant response to the session
         var session = await _sessionService.GetOrCreateAsync(sessionId, ct);
-        var existingMessages = JsonSerializer.Deserialize<List<ChatMessage>>(session.MessagesJson) ?? [];
+        var existingMessages = JsonSerializer.Deserialize<List<ChatMessage>>(session.MessagesJson, _jsonOptions) ?? [];
         existingMessages.Add(new ChatMessage { Role = "user", Content = userMessage });
         if (!string.IsNullOrEmpty(finalAssistantText))
             existingMessages.Add(new ChatMessage { Role = "assistant", Content = finalAssistantText });

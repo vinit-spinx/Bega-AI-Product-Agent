@@ -1,6 +1,11 @@
 import { NextRequest } from 'next/server';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
+// BACKEND_API_URL uses HTTP so Node.js does not reject the self-signed dev cert.
+// NEXT_PUBLIC_API_URL (HTTPS) is kept for browser-side calls only.
+const BACKEND_URL =
+  process.env.BACKEND_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  'http://localhost:5000';
 
 export async function POST(request: NextRequest) {
   let body: unknown;
