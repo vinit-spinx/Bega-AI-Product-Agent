@@ -42,7 +42,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddHttpClient("Anthropic", client =>
 {
     client.BaseAddress = new Uri("https://api.anthropic.com");
-    client.Timeout = TimeSpan.FromMinutes(5);
+    client.Timeout = Timeout.InfiniteTimeSpan;
     client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
     client.DefaultRequestHeaders.Add("x-api-key", config["Anthropic:ApiKey"] ?? string.Empty);
 });

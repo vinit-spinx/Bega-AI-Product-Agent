@@ -75,7 +75,7 @@ public static class ServiceCollectionExtensions
                 services.AddHttpClient("Ollama", client =>
                 {
                     client.BaseAddress = new Uri(ollamaBaseUrl);
-                    client.Timeout = TimeSpan.FromSeconds(60);
+                    client.Timeout = Timeout.InfiniteTimeSpan;
                 });
 
                 services.AddSingleton<IEmbeddingService>(sp => new OllamaEmbeddingService(

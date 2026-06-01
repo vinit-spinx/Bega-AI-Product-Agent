@@ -82,11 +82,28 @@ public sealed class ProductSearchService : IProductSearchService
             return await FallbackSqlSearchAsync(query, filters, topK, ct);
         }
 
-        // Run vector search for every embedding in parallel
+        // When a group filter is present, pre-fetch its product IDs so the vector search
+        // only retrieves candidates from that group. Without this, the ANN search returns
+        // the globally nearest embeddings (often dominated by a single popular group like
+        // Recessed Wall), the SQL group filter then eliminates all of them, and the
+        // safety fallback would silently drop the constraint.
+        int[]? groupFilterIds = null;
+        if (filters.Group is not null)
+        {
+            groupFilterIds = await GetProductIdsByGroupAsync(filters.Group, ct);
+            if (groupFilterIds.Length == 0)
+            {
+                _logger.LogInformation("Group '{Group}' has no products — ignoring group filter", filters.Group);
+                groupFilterIds = null;
+            }
+        }
+
+        // Run vector search for every embedding in parallel, constrained to the group when set
         List<VectorSearchResult>[] allHits;
         try
         {
-            var searchTasks = embeddings.Select(vec => _vectorSearch.SearchAsync(vec, topK: candidateK, ct: ct));
+            var searchTasks = embeddings.Select(vec =>
+                _vectorSearch.SearchAsync(vec, topK: candidateK, filterProductIds: groupFilterIds, ct: ct));
             allHits = await Task.WhenAll(searchTasks);
         }
         catch (Exception ex)
@@ -114,17 +131,18 @@ public sealed class ProductSearchService : IProductSearchService
         // Fetch from SQL Server with filters applied
         var products = await FetchProductsFromSqlAsync(candidateIds, filters, ct);
 
-        // Safety fallback: if category/group/family filters eliminated all vector candidates
-        // (common for broad queries like "recommend exterior lighting"), retry without those
-        // named filters so the user always gets relevant results.
+        // Safety fallback: if category/family filters eliminated all vector candidates,
+        // retry without them. Group is intentionally excluded from this fallback — the
+        // vector search was already group-constrained above, so 0 results here means the
+        // group genuinely has no match; ProjectRecommendationService will try the next group.
         if (products.Count == 0 &&
-            (filters.Category is not null || filters.Group is not null || filters.FamilyName is not null))
+            (filters.Category is not null || filters.FamilyName is not null))
         {
             _logger.LogInformation(
-                "SQL category/group filter returned 0 for '{Query}' — retrying without named filters", query);
+                "SQL category/family filter returned 0 for '{Query}' — retrying without those filters", query);
             products = await FetchProductsFromSqlAsync(
                 candidateIds,
-                filters with { Category = null, Group = null, FamilyName = null },
+                filters with { Category = null, FamilyName = null },
                 ct);
         }
 
@@ -151,32 +169,47 @@ public sealed class ProductSearchService : IProductSearchService
             .OrderByDescending(p => p.MatchScore)
             .ToList();
 
-        // Diversity filter: one product per FamilyName so variants of the same visual design
-        // (e.g. "Garden bollard · Direct burial" vs "Garden bollard · Hardscape base") don't
-        // all appear together. FamilyName is the human-readable design name shared by all
-        // mounting/wiring variants; FamilySlug is a numeric ID that differs per sub-family.
+        // Diversity filter — two levels:
+        // 1. When no explicit group filter is set: enforce one product per group first,
+        //    so results are drawn from different luminaire families (Bollard, Wall, In-grade…)
+        //    rather than all from the single group whose embeddings dominate the vector space.
+        // 2. Within each group: one product per FamilyName so size/wattage variants of the
+        //    same visual design don't crowd out other options.
+        var seenGroups  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenFamilies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenIds = new HashSet<int>();
-        var diverse = new List<ProductSearchResult>(topK);
+        var seenIds      = new HashSet<int>();
+        var diverse      = new List<ProductSearchResult>(topK);
 
-        foreach (var p in scored)
-        {
-            var familyKey = p.FamilyName ?? p.FamilySlug ?? p.CatalogNumber;
-            if (seenFamilies.Add(familyKey) && seenIds.Add(p.ProductId))
-                diverse.Add(p);
-            if (diverse.Count >= topK) break;
-        }
+        bool groupDiversityEnabled = filters.Group is null;
 
-        // Backfill with different products if we're still short (happens when catalog has
-        // fewer unique family names than topK for the query)
-        if (diverse.Count < topK)
+        // Pass 1: one product per group (only when group diversity is enabled)
+        if (groupDiversityEnabled)
         {
             foreach (var p in scored)
             {
-                if (!seenIds.Add(p.ProductId)) continue;
-                diverse.Add(p);
+                var groupKey  = p.GroupsName ?? p.GroupSlug ?? "unknown";
+                var familyKey = p.FamilyName ?? p.FamilySlug ?? p.CatalogNumber;
+                if (seenGroups.Add(groupKey) && seenFamilies.Add(familyKey) && seenIds.Add(p.ProductId))
+                    diverse.Add(p);
                 if (diverse.Count >= topK) break;
             }
+        }
+
+        // Pass 2: fill remaining slots with the best family-diverse products from any group
+        foreach (var p in scored)
+        {
+            if (diverse.Count >= topK) break;
+            var familyKey = p.FamilyName ?? p.FamilySlug ?? p.CatalogNumber;
+            if (seenFamilies.Add(familyKey) && seenIds.Add(p.ProductId))
+                diverse.Add(p);
+        }
+
+        // Pass 3: absolute backfill — any product not yet seen (handles catalogs with few families)
+        foreach (var p in scored)
+        {
+            if (diverse.Count >= topK) break;
+            if (seenIds.Add(p.ProductId))
+                diverse.Add(p);
         }
 
         return diverse;
@@ -440,6 +473,17 @@ public sealed class ProductSearchService : IProductSearchService
         var results = await conn.QueryAsync<ProductSearchResult>(
             new CommandDefinition(sql, parameters, cancellationToken: ct));
         return results.ToList();
+    }
+
+    private async Task<int[]> GetProductIdsByGroupAsync(string groupName, CancellationToken ct)
+    {
+        await using var conn = new SqlConnection(_connectionString);
+        var ids = await conn.QueryAsync<int>(
+            new CommandDefinition(
+                "SELECT ProductId FROM Products WHERE GroupsName = @GroupName",
+                new { GroupName = groupName },
+                cancellationToken: ct));
+        return ids.ToArray();
     }
 
     private async Task<List<ProductSearchResult>> FallbackSqlSearchAsync(
