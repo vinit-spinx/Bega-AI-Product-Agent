@@ -46,21 +46,35 @@ public sealed class ProductSearchService : IProductSearchService
     }
 
     /// <inheritdoc/>
+    public Task<List<ProductSearchResult>> SearchByNaturalLanguageAsync(
+        string query,
+        ProductSearchFilters? filters = null,
+        CancellationToken ct = default)
+        => SearchByNaturalLanguageAsync(query, [], filters, ct);
+
+    /// <inheritdoc/>
     public async Task<List<ProductSearchResult>> SearchByNaturalLanguageAsync(
         string query,
+        IReadOnlyList<string> expandedQueries,
         ProductSearchFilters? filters = null,
         CancellationToken ct = default)
     {
         filters ??= new ProductSearchFilters();
-        var topK = Math.Max(filters.TopK, 5);
+        var topK = Math.Max(filters.TopK, 6);
+        var candidateK = Math.Max(topK * 8, 80);
 
-        // Retrieve a larger candidate pool from vector search to allow SQL filtering to narrow down
-        var candidateK = Math.Max(topK * 4, 40);
+        // Build full query list: primary + expanded (capped at 4 expanded to control latency)
+        var allQueries = new List<string>(1 + Math.Min(expandedQueries.Count, 4)) { query };
+        foreach (var eq in expandedQueries.Take(4))
+            if (!string.IsNullOrWhiteSpace(eq) && eq != query)
+                allQueries.Add(eq);
 
-        float[] queryVector;
+        // Embed all queries in parallel
+        float[][] embeddings;
         try
         {
-            queryVector = await _embedding.EmbedAsync(query, ct);
+            var embeddingTasks = allQueries.Select(q => _embedding.EmbedAsync(q, ct));
+            embeddings = await Task.WhenAll(embeddingTasks);
         }
         catch (Exception ex)
         {
@@ -68,10 +82,12 @@ public sealed class ProductSearchService : IProductSearchService
             return await FallbackSqlSearchAsync(query, filters, topK, ct);
         }
 
-        List<VectorSearchResult> vectorHits;
+        // Run vector search for every embedding in parallel
+        List<VectorSearchResult>[] allHits;
         try
         {
-            vectorHits = await _vectorSearch.SearchAsync(queryVector, topK: candidateK, ct: ct);
+            var searchTasks = embeddings.Select(vec => _vectorSearch.SearchAsync(vec, topK: candidateK, ct: ct));
+            allHits = await Task.WhenAll(searchTasks);
         }
         catch (Exception ex)
         {
@@ -79,33 +95,91 @@ public sealed class ProductSearchService : IProductSearchService
             return await FallbackSqlSearchAsync(query, filters, topK, ct);
         }
 
-        if (vectorHits.Count == 0) return [];
-
-        // Deduplicate: keep highest score per product
-        var scoreByProductId = vectorHits
+        // Merge all hits — keep the highest score per product across all query passes
+        var scoreByProductId = allHits
+            .SelectMany(hits => hits)
             .GroupBy(h => h.ProductId)
             .ToDictionary(g => g.Key, g => g.Max(h => h.Score));
+
+        if (scoreByProductId.Count == 0)
+        {
+            _logger.LogInformation(
+                "All {Count} vector searches returned no results for '{Query}' — falling back to SQL keyword search",
+                allQueries.Count, query);
+            return await FallbackSqlSearchAsync(query, filters, topK, ct);
+        }
 
         var candidateIds = scoreByProductId.Keys.ToArray();
 
         // Fetch from SQL Server with filters applied
         var products = await FetchProductsFromSqlAsync(candidateIds, filters, ct);
 
+        // Safety fallback: if category/group/family filters eliminated all vector candidates
+        // (common for broad queries like "recommend exterior lighting"), retry without those
+        // named filters so the user always gets relevant results.
+        if (products.Count == 0 &&
+            (filters.Category is not null || filters.Group is not null || filters.FamilyName is not null))
+        {
+            _logger.LogInformation(
+                "SQL category/group filter returned 0 for '{Query}' — retrying without named filters", query);
+            products = await FetchProductsFromSqlAsync(
+                candidateIds,
+                filters with { Category = null, Group = null, FamilyName = null },
+                ct);
+        }
+
+        // Last resort: if vector candidates didn't match any SQL rows at all, fall back to keyword search
+        if (products.Count == 0)
+        {
+            _logger.LogInformation(
+                "SQL returned 0 rows for vector candidates on '{Query}' — falling back to keyword search", query);
+            return await FallbackSqlSearchAsync(query, filters, topK, ct);
+        }
+
         // Exclude furniture from luminaire search results
         var luminaires = products
             .Where(p => p.GroupSlug is null || !FurnitureGroupSlugs.Contains(p.GroupSlug))
             .ToList();
 
-        // Merge vector scores and return top K by score
-        return luminaires
+        // Merge vector scores
+        var scored = luminaires
             .Select(p =>
             {
                 var score = scoreByProductId.TryGetValue(p.ProductId, out var s) ? s : 0;
                 return p with { MatchScore = score };
             })
             .OrderByDescending(p => p.MatchScore)
-            .Take(topK)
             .ToList();
+
+        // Diversity filter: one product per FamilyName so variants of the same visual design
+        // (e.g. "Garden bollard · Direct burial" vs "Garden bollard · Hardscape base") don't
+        // all appear together. FamilyName is the human-readable design name shared by all
+        // mounting/wiring variants; FamilySlug is a numeric ID that differs per sub-family.
+        var seenFamilies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenIds = new HashSet<int>();
+        var diverse = new List<ProductSearchResult>(topK);
+
+        foreach (var p in scored)
+        {
+            var familyKey = p.FamilyName ?? p.FamilySlug ?? p.CatalogNumber;
+            if (seenFamilies.Add(familyKey) && seenIds.Add(p.ProductId))
+                diverse.Add(p);
+            if (diverse.Count >= topK) break;
+        }
+
+        // Backfill with different products if we're still short (happens when catalog has
+        // fewer unique family names than topK for the query)
+        if (diverse.Count < topK)
+        {
+            foreach (var p in scored)
+            {
+                if (!seenIds.Add(p.ProductId)) continue;
+                diverse.Add(p);
+                if (diverse.Count >= topK) break;
+            }
+        }
+
+        return diverse;
     }
 
     /// <inheritdoc/>
@@ -284,10 +358,25 @@ public sealed class ProductSearchService : IProductSearchService
             conditions.Add("p.LumenOutputLm >= @MinLumenOutput");
             parameters.Add("MinLumenOutput", filters.MinLumenOutput.Value);
         }
-        if (filters.BeamAngleDeg.HasValue)
+        if (filters.MaxLumenOutput.HasValue)
         {
-            conditions.Add("p.BeamAngleDeg = @BeamAngleDeg");
-            parameters.Add("BeamAngleDeg", filters.BeamAngleDeg.Value);
+            conditions.Add("p.LumenOutputLm <= @MaxLumenOutput");
+            parameters.Add("MaxLumenOutput", filters.MaxLumenOutput.Value);
+        }
+        if (filters.MinBeamAngleDeg.HasValue)
+        {
+            conditions.Add("p.BeamAngleDeg >= @MinBeamAngleDeg");
+            parameters.Add("MinBeamAngleDeg", filters.MinBeamAngleDeg.Value);
+        }
+        if (filters.MaxBeamAngleDeg.HasValue)
+        {
+            conditions.Add("p.BeamAngleDeg <= @MaxBeamAngleDeg");
+            parameters.Add("MaxBeamAngleDeg", filters.MaxBeamAngleDeg.Value);
+        }
+        if (filters.ColorTemperatureK.HasValue)
+        {
+            conditions.Add("p.ColorTemperatureJson LIKE @CctPattern");
+            parameters.Add("CctPattern", $"%\"kelvin\":{filters.ColorTemperatureK.Value}%");
         }
         if (filters.Voltage is not null)
         {
@@ -296,23 +385,39 @@ public sealed class ProductSearchService : IProductSearchService
         }
         if (filters.ControlProtocol is not null)
         {
-            conditions.Add("p.ControlProtocol = @ControlProtocol");
-            parameters.Add("ControlProtocol", filters.ControlProtocol);
+            // LIKE so "DALI" matches "DALI-2"; "0-10V" matches exactly; etc.
+            conditions.Add("p.ControlProtocol LIKE @ControlProtocol");
+            parameters.Add("ControlProtocol", $"%{filters.ControlProtocol}%");
+        }
+        if (filters.Application is not null)
+        {
+            // DB values: Accent · Emergency · Facade · Pathway · Roadway · Site & Area · Unshielded
+            conditions.Add("p.Application LIKE @Application");
+            parameters.Add("Application", $"%{filters.Application}%");
+        }
+        if (filters.Distribution is not null)
+        {
+            // DB values: Type I · Type II · Type III · Type IV · Type V
+            conditions.Add("p.Distribution LIKE @Distribution");
+            parameters.Add("Distribution", $"%{filters.Distribution}%");
+        }
+        if (filters.DynamicLight is not null)
+        {
+            // DB values: RGBW · Tunable White
+            conditions.Add("p.DynamicLight LIKE @DynamicLight");
+            parameters.Add("DynamicLight", $"%{filters.DynamicLight}%");
+        }
+        if (filters.Compliance is not null)
+        {
+            // Maps to SocialEnviornmentalHealth column
+            // DB values: International Dark Sky · Wildlife Friendly · EPD Available · FSC certified wood
+            conditions.Add("p.SocialEnviornmentalHealth LIKE @Compliance");
+            parameters.Add("Compliance", $"%{filters.Compliance}%");
         }
         if (filters.AdaCompliant == true)
-        {
             conditions.Add("p.IsAdaCompliant = 1");
-        }
         if (filters.ExpressDelivery == true)
-        {
             conditions.Add("p.IsExpressDelivery = 1");
-        }
-        if (filters.ColorTemperatureK.HasValue)
-        {
-            // ColorTemperatureJson is a JSON array; check if the requested Kelvin value is present
-            conditions.Add("p.ColorTemperatureJson LIKE @CctPattern");
-            parameters.Add("CctPattern", $"%\"kelvin\":{filters.ColorTemperatureK.Value}%");
-        }
 
         var sql = $"""
             SELECT
@@ -343,8 +448,163 @@ public sealed class ProductSearchService : IProductSearchService
         int topK,
         CancellationToken ct)
     {
-        // Simple keyword fallback: search FamilyName, ExtraInfo, GroupsName
-        const string sql = """
+        await using var conn = new SqlConnection(_connectionString);
+
+        // Structured filter conditions carried from the original request.
+        // These MUST be preserved in the fallback — dropping them causes wrong products
+        // (e.g. returning non-DALI products when DALI was explicitly requested).
+        var structuredConditions = new List<string>();
+        var structuredParams = new DynamicParameters();
+
+        if (!string.IsNullOrWhiteSpace(filters.Category))
+        {
+            structuredConditions.Add("CategoryName = @Category");
+            structuredParams.Add("Category", filters.Category);
+        }
+        if (!string.IsNullOrWhiteSpace(filters.ControlProtocol))
+        {
+            structuredConditions.Add("ControlProtocol LIKE @ControlProtocol");
+            structuredParams.Add("ControlProtocol", $"%{filters.ControlProtocol}%");
+        }
+        if (!string.IsNullOrWhiteSpace(filters.Voltage))
+        {
+            structuredConditions.Add("Voltage LIKE @Voltage");
+            structuredParams.Add("Voltage", $"%{filters.Voltage}%");
+        }
+        if (!string.IsNullOrWhiteSpace(filters.Application))
+        {
+            structuredConditions.Add("Application LIKE @Application");
+            structuredParams.Add("Application", $"%{filters.Application}%");
+        }
+        if (!string.IsNullOrWhiteSpace(filters.Distribution))
+        {
+            structuredConditions.Add("Distribution LIKE @Distribution");
+            structuredParams.Add("Distribution", $"%{filters.Distribution}%");
+        }
+        if (!string.IsNullOrWhiteSpace(filters.DynamicLight))
+        {
+            structuredConditions.Add("DynamicLight LIKE @DynamicLight");
+            structuredParams.Add("DynamicLight", $"%{filters.DynamicLight}%");
+        }
+        if (!string.IsNullOrWhiteSpace(filters.Compliance))
+        {
+            structuredConditions.Add("SocialEnviornmentalHealth LIKE @Compliance");
+            structuredParams.Add("Compliance", $"%{filters.Compliance}%");
+        }
+        if (filters.ColorTemperatureK.HasValue)
+        {
+            structuredConditions.Add("ColorTemperatureJson LIKE @CctPattern");
+            structuredParams.Add("CctPattern", $"%\"kelvin\":{filters.ColorTemperatureK.Value}%");
+        }
+        if (filters.MinLumenOutput.HasValue)
+        {
+            structuredConditions.Add("LumenOutputLm >= @MinLumenOutput");
+            structuredParams.Add("MinLumenOutput", filters.MinLumenOutput.Value);
+        }
+        if (filters.MaxLumenOutput.HasValue)
+        {
+            structuredConditions.Add("LumenOutputLm <= @MaxLumenOutput");
+            structuredParams.Add("MaxLumenOutput", filters.MaxLumenOutput.Value);
+        }
+        if (filters.MinWattageW.HasValue)
+        {
+            structuredConditions.Add("WattageW >= @MinWattageW");
+            structuredParams.Add("MinWattageW", filters.MinWattageW.Value);
+        }
+        if (filters.MaxWattageW.HasValue)
+        {
+            structuredConditions.Add("WattageW <= @MaxWattageW");
+            structuredParams.Add("MaxWattageW", filters.MaxWattageW.Value);
+        }
+        if (filters.MinBeamAngleDeg.HasValue)
+        {
+            structuredConditions.Add("BeamAngleDeg >= @MinBeamAngleDeg");
+            structuredParams.Add("MinBeamAngleDeg", filters.MinBeamAngleDeg.Value);
+        }
+        if (filters.MaxBeamAngleDeg.HasValue)
+        {
+            structuredConditions.Add("BeamAngleDeg <= @MaxBeamAngleDeg");
+            structuredParams.Add("MaxBeamAngleDeg", filters.MaxBeamAngleDeg.Value);
+        }
+        if (filters.AdaCompliant == true)
+            structuredConditions.Add("IsAdaCompliant = 1");
+        if (filters.ExpressDelivery == true)
+            structuredConditions.Add("IsExpressDelivery = 1");
+
+        var structuredClause = structuredConditions.Count > 0
+            ? "AND " + string.Join(" AND ", structuredConditions)
+            : string.Empty;
+
+        // Word-level keyword match across descriptive columns
+        var words = query
+            .Split([' ', '-', ',', '.', '/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 3)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToList();
+
+        if (words.Count > 0)
+        {
+            var wordConditions = words
+                .Select((_, i) => $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} OR GroupsName LIKE @w{i} OR LuminaireType LIKE @w{i} OR Application LIKE @w{i} OR ExtraInfo LIKE @w{i})")
+                .ToList();
+
+            var wordSql = $"""
+                SELECT TOP (@TopK)
+                    ProductId, CatalogNumber, FamilyName, FamilySlug, SubFamilyName,
+                    CategoryName, GroupSlug, GroupsName, LuminaireType,
+                    FamilyListPageImage, FamilyTechImage,
+                    LedWattage, WattageW, SystemWattageW, LumenOutputLm, BeamAngleDeg,
+                    ColorTemperatureJson, Voltage, ControlProtocol, Application, Distribution,
+                    IsAdaCompliant, IsExpressDelivery, LeadTime,
+                    DimensionA, DimensionAFraction, DimensionB, DimensionBFraction,
+                    DimensionC, DimensionCFraction,
+                    DnpPrice, MsrpPrice,
+                    SpecDocumentUrl, TechnicalDocumentUrl,
+                    0.0 AS MatchScore
+                FROM Products
+                WHERE ({string.Join(" OR ", wordConditions)})
+                  AND (GroupSlug NOT IN @FurnitureSlugs OR GroupSlug IS NULL)
+                  {structuredClause}
+                ORDER BY CatalogNumber
+                """;
+
+            structuredParams.Add("TopK", topK);
+            structuredParams.Add("FurnitureSlugs", FurnitureGroupSlugs.ToArray());
+            for (int i = 0; i < words.Count; i++)
+                structuredParams.Add($"w{i}", $"%{words[i]}%");
+
+            var wordResults = (await conn.QueryAsync<ProductSearchResult>(
+                new CommandDefinition(wordSql, structuredParams, cancellationToken: ct))).ToList();
+
+            if (wordResults.Count > 0)
+                return wordResults;
+        }
+
+        // If structured filters are active (e.g. ControlProtocol=DALI) and nothing matched,
+        // return empty rather than dropping the filter and showing wrong products.
+        // Claude will then correctly report that no matching products were found.
+        if (structuredConditions.Count > 0)
+        {
+            _logger.LogInformation(
+                "Fallback found no products matching structured filters for '{Query}' — returning empty so Claude reports no results",
+                query);
+            return [];
+        }
+
+        // No structured filters active — safe to do a broad keyword-only search
+        var broadParams = new DynamicParameters();
+        broadParams.Add("TopK", topK);
+        broadParams.Add("FurnitureSlugs", FurnitureGroupSlugs.ToArray());
+
+        var words2 = words.Count > 0 ? words : [query];
+        var broadConditions = words2
+            .Select((_, i) => $"(FamilyName LIKE @b{i} OR GroupsName LIKE @b{i} OR LuminaireType LIKE @b{i})")
+            .ToList();
+        for (int i = 0; i < words2.Count; i++)
+            broadParams.Add($"b{i}", $"%{words2[i]}%");
+
+        var broadSql = $"""
             SELECT TOP (@TopK)
                 ProductId, CatalogNumber, FamilyName, FamilySlug, SubFamilyName,
                 CategoryName, GroupSlug, GroupsName, LuminaireType,
@@ -358,22 +618,14 @@ public sealed class ProductSearchService : IProductSearchService
                 SpecDocumentUrl, TechnicalDocumentUrl,
                 0.0 AS MatchScore
             FROM Products
-            WHERE (FamilyName LIKE @Query OR ExtraInfo LIKE @Query OR GroupsName LIKE @Query)
+            WHERE ({string.Join(" OR ", broadConditions)})
               AND (GroupSlug NOT IN @FurnitureSlugs OR GroupSlug IS NULL)
             ORDER BY CatalogNumber
             """;
 
-        await using var conn = new SqlConnection(_connectionString);
-        var results = await conn.QueryAsync<ProductSearchResult>(new CommandDefinition(
-            sql,
-            new
-            {
-                TopK = topK,
-                Query = $"%{query}%",
-                FurnitureSlugs = FurnitureGroupSlugs.ToArray()
-            },
-            cancellationToken: ct));
-        return results.ToList();
+        var broadResults = await conn.QueryAsync<ProductSearchResult>(
+            new CommandDefinition(broadSql, broadParams, cancellationToken: ct));
+        return broadResults.ToList();
     }
 
     private static string? MapSpecKeyToColumn(string specKey) => specKey switch

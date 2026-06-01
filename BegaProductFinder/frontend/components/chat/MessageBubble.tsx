@@ -26,11 +26,70 @@ export default function MessageBubble({ message, onSuggestedAction }: MessageBub
     );
   }
 
+  const hasRichData =
+    (message.products?.length ?? 0) > 0 ||
+    (message.furnitureItems?.length ?? 0) > 0 ||
+    (message.projectAreas?.length ?? 0) > 0 ||
+    message.bomReport != null;
+
   return (
     <div className="flex justify-start px-4 py-2 animate-fade-in">
       <div className="max-w-full w-full">
-        {/* BEGA avatar + text */}
-        <div className="flex gap-3 items-start mb-2">
+
+        {/* ── Rich data panels rendered FIRST so they appear above the text ── */}
+        {hasRichData && (
+          <div className="ml-10 space-y-4 mb-3">
+            {/* Products */}
+            {message.products && message.products.length > 0 && (
+              <section>
+                <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
+                  Luminaires ({message.products.length})
+                </p>
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {message.products.map((p, i) => (
+                    <ProductCard key={`${p.productId}-${p.catalogNumber}-${i}`} product={p} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Furniture */}
+            {message.furnitureItems && message.furnitureItems.length > 0 && (
+              <section>
+                <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
+                  Furniture &amp; Urban Elements ({message.furnitureItems.length})
+                </p>
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {message.furnitureItems.map((item, i) => (
+                    <FurnitureCard key={`${item.productId}-${item.catalogNumber}-${i}`} item={item} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Project recommendations */}
+            {message.projectAreas && message.projectAreas.length > 0 && (
+              <section>
+                <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
+                  Project Recommendations
+                </p>
+                <div className="space-y-3">
+                  {message.projectAreas.map(area => (
+                    <ProjectAreaCard key={area.areaName} area={area} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* BOM */}
+            {message.bomReport && (
+              <BomTable report={message.bomReport} />
+            )}
+          </div>
+        )}
+
+        {/* ── BEGA avatar + text bubble ── */}
+        <div className="flex gap-3 items-start">
           <div className="flex-shrink-0 w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center mt-0.5">
             <span className="text-zinc-900 text-xs font-bold">B</span>
           </div>
@@ -47,63 +106,16 @@ export default function MessageBubble({ message, onSuggestedAction }: MessageBub
                 </p>
               )}
             </div>
+
+            {/* Suggested actions pinned directly below the text bubble */}
+            {!message.isStreaming && message.suggestedActions && message.suggestedActions.length > 0 && (
+              <div className="mt-2">
+                <SuggestedActions actions={message.suggestedActions} onSelect={onSuggestedAction} />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Rich data panels — rendered below the text bubble */}
-        <div className="ml-10 space-y-3">
-          {/* Products */}
-          {message.products && message.products.length > 0 && (
-            <section>
-              <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
-                Luminaires
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {message.products.map(p => (
-                  <ProductCard key={`${p.catalogNumber}-${p.productId}`} product={p} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Furniture */}
-          {message.furnitureItems && message.furnitureItems.length > 0 && (
-            <section>
-              <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
-                Furniture &amp; Urban Elements
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {message.furnitureItems.map(item => (
-                  <FurnitureCard key={`${item.catalogNumber}-${item.productId}`} item={item} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Project recommendations */}
-          {message.projectAreas && message.projectAreas.length > 0 && (
-            <section>
-              <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
-                Project Recommendations
-              </p>
-              <div className="space-y-3">
-                {message.projectAreas.map(area => (
-                  <ProjectAreaCard key={area.areaName} area={area} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* BOM */}
-          {message.bomReport && (
-            <BomTable report={message.bomReport} />
-          )}
-
-          {/* Suggested actions */}
-          {!message.isStreaming && message.suggestedActions && message.suggestedActions.length > 0 && (
-            <SuggestedActions actions={message.suggestedActions} onSelect={onSuggestedAction} />
-          )}
-        </div>
       </div>
     </div>
   );

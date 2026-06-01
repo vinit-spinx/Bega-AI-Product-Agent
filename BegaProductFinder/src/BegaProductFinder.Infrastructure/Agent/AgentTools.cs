@@ -3,12 +3,11 @@ using System.Text.Json.Nodes;
 namespace BegaProductFinder.Infrastructure.Agent;
 
 /// <summary>
-/// Produces the 8 Claude tool definitions sent in every request to the Anthropic Messages API.
-/// Tool schemas follow JSON Schema Draft-07 as required by the Anthropic API.
+/// Produces the 8 Claude tool definitions sent in every request.
+/// Descriptions are kept intentionally concise to minimise prompt tokens.
 /// </summary>
 public static class AgentTools
 {
-    /// <summary>Returns all 8 tool definitions ready for serialization into the Claude API request.</summary>
     public static JsonObject[] GetDefinitions() =>
     [
         SearchProducts(),
@@ -21,222 +20,202 @@ public static class AgentTools
         SearchFurniture()
     ];
 
-    // ── Tool 1 ────────────────────────────────────────────────────────────────
-
     private static JsonObject SearchProducts() => Tool(
-        name: "search_products",
-        description:
-            "Natural language product search across the BEGA luminaire catalog. " +
-            "Use for any query about finding luminaires by type, feature, application, environment, " +
-            "compliance, technology, or photometric spec. Returns matching products with key specs, " +
-            "image URLs, spec document URL, and a match score.",
-        properties: new JsonObject
+        "search_products",
+        "Search the Bega luminaire catalog by natural language. Always populate expanded_queries with 3–5 synonym strings for parallel vector retrieval. Pass every stated requirement as a structured filter field — do not embed filters only in the query string.",
+        new JsonObject
         {
-            ["query"] = Prop("string", "Natural language description of the required luminaire e.g. 'exterior in-grade 24V dark sky compliant'", required: true),
-            ["category"] = Prop("string", "Filter to 'Exterior' or 'Interior'"),
-            ["group"] = Prop("string", "Filter to a group name e.g. 'In-grade', 'Recessed-wall', 'Ceiling'"),
-            ["family_name"] = Prop("string", "Filter to a family name e.g. 'In-grade luminaire'"),
-            ["min_wattage_w"] = Prop("number", "Minimum LED wattage in watts (inclusive)"),
-            ["max_wattage_w"] = Prop("number", "Maximum LED wattage in watts (inclusive)"),
-            ["min_lumen_output"] = Prop("number", "Minimum lumen output in lumens (inclusive)"),
-            ["beam_angle_deg"] = Prop("number", "Exact beam angle in degrees"),
-            ["color_temperature_k"] = Prop("integer", "Colour temperature in Kelvin e.g. 2700, 3000, 3500, 4000"),
-            ["voltage"] = Prop("string", "Voltage spec substring e.g. '24V DC', '120V'"),
-            ["control_protocol"] = Prop("string", "Control protocol e.g. 'DALI', '0-10V', 'Non-Dimming'"),
-            ["ada_compliant"] = Prop("boolean", "When true, restrict to ADA-compliant products only"),
-            ["express_delivery"] = Prop("boolean", "When true, restrict to express-delivery products only"),
-            ["top_k"] = Prop("integer", "Maximum number of results to return. Default 5")
+            ["query"] = Prop("string", "Primary natural language description e.g. 'DALI-2 garden bollard 24V DC'", req: true),
+            ["expanded_queries"] = new JsonObject
+            {
+                ["type"]        = "array",
+                ["description"] = "Synonym/related concepts for parallel vector search e.g. ['DALI garden light','DALI landscape luminaire','garden bollard DALI-2']",
+                ["items"]       = new JsonObject { ["type"] = "string" }
+            },
+            // ── Hierarchy ───────────────────────────────────────────────────
+            ["category"]    = Prop("string",  "Exact value: 'Exterior' or 'Interior'"),
+            ["group"]       = Prop("string",  "Luminaire type group e.g. 'garden', 'in-grade', 'wall'"),
+            ["family_name"] = Prop("string",  "Family name e.g. 'Garden bollard'"),
+            // ── Wattage ─────────────────────────────────────────────────────
+            ["min_wattage_w"] = Prop("number", "Minimum LED wattage (W)"),
+            ["max_wattage_w"] = Prop("number", "Maximum LED wattage (W)"),
+            // ── Lumen output ────────────────────────────────────────────────
+            ["min_lumen_output"] = Prop("number", "Minimum lumen output (lm)"),
+            ["max_lumen_output"] = Prop("number", "Maximum lumen output (lm)"),
+            // ── Beam angle range ────────────────────────────────────────────
+            // Site ranges: Spot 0-10° · Very Narrow 11-20° · Narrow 21-39° · Wide 40-69° · Very Wide 70-90°
+            ["min_beam_angle_deg"] = Prop("number", "Minimum beam angle in degrees e.g. 0 for Spot, 40 for Wide"),
+            ["max_beam_angle_deg"] = Prop("number", "Maximum beam angle in degrees e.g. 10 for Spot, 69 for Wide"),
+            // ── Color temperature ───────────────────────────────────────────
+            // Exact DB values: 2200 · 2700 · 3000 · 3500 · 4000
+            ["color_temperature_k"] = Prop("integer", "CCT in Kelvin. Exact values: 2200 | 2700 | 3000 | 3500 | 4000"),
+            // ── Voltage ─────────────────────────────────────────────────────
+            // Exact DB values: "12V AC" · "24V DC" · "120V AC" · "120-277V AC" · "277V AC"
+            ["voltage"] = Prop("string", "Exact voltage string: '12V AC' | '24V DC' | '120V AC' | '120-277V AC' | '277V AC'"),
+            // ── Control protocol ────────────────────────────────────────────
+            // Exact DB values: "0-10V" · "ELV/TRIAC" · "DALI-2" · "DMX"
+            ["control_protocol"] = Prop("string", "Exact protocol: '0-10V' | 'ELV/TRIAC' | 'DALI-2' | 'DMX'. 'DALI' also matches 'DALI-2'."),
+            // ── Application ─────────────────────────────────────────────────
+            // Exact DB values: "Accent" · "Emergency" · "Facade" · "Pathway" · "Roadway" · "Site & Area" · "Unshielded"
+            ["application"] = Prop("string", "Exact application: 'Accent' | 'Emergency' | 'Facade' | 'Pathway' | 'Roadway' | 'Site & Area' | 'Unshielded'"),
+            // ── Distribution ────────────────────────────────────────────────
+            // Exact DB values: "Type I" · "Type II" · "Type III" · "Type IV" · "Type V"
+            ["distribution"] = Prop("string", "Light distribution: 'Type I' | 'Type II' | 'Type III' | 'Type IV' | 'Type V'"),
+            // ── Dynamic light ───────────────────────────────────────────────
+            // Exact DB values: "RGBW" · "Tunable White"
+            ["dynamic_light"] = Prop("string", "Dynamic light type: 'RGBW' | 'Tunable White'"),
+            // ── Compliance / environmental ──────────────────────────────────
+            // DB column: SocialEnviornmentalHealth
+            // Exact values: "International Dark Sky" · "Wildlife Friendly" · "EPD Available" · "FSC certified wood"
+            ["compliance"] = Prop("string", "Compliance: 'International Dark Sky' | 'Wildlife Friendly' | 'EPD Available' | 'FSC certified wood'"),
+            // ── Boolean flags ───────────────────────────────────────────────
+            ["ada_compliant"]    = Prop("boolean", "ADA compliant products only"),
+            ["express_delivery"] = Prop("boolean", "EXPRESS / quick-ship products only (lead time: one week)"),
+            ["top_k"]            = Prop("integer", "Max results — always pass 3")
         },
-        required: ["query"]);
-
-    // ── Tool 2 ────────────────────────────────────────────────────────────────
+        ["query"]);
 
     private static JsonObject GetProductDetail() => Tool(
-        name: "get_product_detail",
-        description:
-            "Retrieve the complete specification record for one specific BEGA luminaire or furniture product " +
-            "by its catalog number. Use when the user asks about a specific catalog number or when you need " +
-            "the full spec after a search. Returns all electrical specs, physical dimensions, " +
-            "colour temperature options, voltage, control protocol, accessories, and document URLs.",
-        properties: new JsonObject
+        "get_product_detail",
+        "Full specification for one BEGA product by catalog number.",
+        new JsonObject
         {
-            ["catalog_number"] = Prop("string", "BEGA catalog number e.g. '77127'", required: true)
+            ["catalog_number"] = Prop("string", "BEGA catalog number e.g. '77127'", req: true)
         },
-        required: ["catalog_number"]);
-
-    // ── Tool 3 ────────────────────────────────────────────────────────────────
+        ["catalog_number"]);
 
     private static JsonObject BrowseByHierarchy() => Tool(
-        name: "browse_by_hierarchy",
-        description:
-            "Navigate the BEGA product hierarchy — Category → Group → Family → Products — " +
-            "to help users explore the catalog structure. Use when the user wants to browse or discover " +
-            "what product types are available, rather than searching for a specific requirement.",
-        properties: new JsonObject
+        "browse_by_hierarchy",
+        "Explore the BEGA catalog hierarchy: categories → groups → families → products. Use to discover available product types.",
+        new JsonObject
         {
             ["level"] = new JsonObject
             {
                 ["type"] = "string",
-                ["description"] = "Hierarchy level to retrieve",
+                ["description"] = "Hierarchy level",
                 ["enum"] = new JsonArray { "categories", "groups", "families", "products" }
             },
-            ["category"] = Prop("string", "Filter by category e.g. 'Exterior'. Required for levels 'groups' and 'families'"),
-            ["group"] = Prop("string", "Filter by group name e.g. 'In-grade'. Required for level 'families'"),
-            ["family_slug"] = Prop("string", "Family slug identifier. Required for level 'products'")
+            ["category"]    = Prop("string", "Filter by category. Required for 'groups' and 'families'"),
+            ["group"]       = Prop("string", "Filter by group. Required for 'families'"),
+            ["family_slug"] = Prop("string", "Family slug. Required for 'products'")
         },
-        required: ["level"]);
-
-    // ── Tool 4 ────────────────────────────────────────────────────────────────
+        ["level"]);
 
     private static JsonObject FilterBySpecs() => Tool(
-        name: "filter_by_specs",
-        description:
-            "Precise numerical filtering on product specification columns. " +
-            "Use when the user has an exact numerical requirement such as 'lumens >= 500', " +
-            "'wattage between 5W and 20W', or 'price under $500'. " +
-            "Known spec_key values: WattageW, SystemWattageW, LumenOutputLm, BeamAngleDeg, DnpPrice, MsrpPrice.",
-        properties: new JsonObject
+        "filter_by_specs",
+        "Exact numerical filter on product specs. Keys: WattageW | SystemWattageW | LumenOutputLm | BeamAngleDeg | DnpPrice | MsrpPrice.",
+        new JsonObject
         {
             ["filters"] = new JsonObject
             {
                 ["type"] = "array",
-                ["description"] = "One or more filter conditions — all conditions are ANDed together",
+                ["description"] = "Filter conditions (ANDed)",
                 ["items"] = new JsonObject
                 {
                     ["type"] = "object",
                     ["properties"] = new JsonObject
                     {
-                        ["spec_key"] = Prop("string", "Column name: WattageW | SystemWattageW | LumenOutputLm | BeamAngleDeg | DnpPrice | MsrpPrice"),
-                        ["operator"] = new JsonObject
+                        ["spec_key"]  = Prop("string", "WattageW|SystemWattageW|LumenOutputLm|BeamAngleDeg|DnpPrice|MsrpPrice"),
+                        ["operator"]  = new JsonObject
                         {
                             ["type"] = "string",
                             ["enum"] = new JsonArray { "gte", "lte", "eq", "between" }
                         },
-                        ["value"] = Prop("number", "Primary comparison value. For 'between', this is the lower bound"),
-                        ["value_max"] = Prop("number", "Upper bound — only used with operator 'between'")
+                        ["value"]     = Prop("number", "Comparison value (lower bound for 'between')"),
+                        ["value_max"] = Prop("number", "Upper bound for 'between'")
                     },
                     ["required"] = new JsonArray { "spec_key", "operator", "value" }
                 }
             }
         },
-        required: ["filters"]);
-
-    // ── Tool 5 ────────────────────────────────────────────────────────────────
+        ["filters"]);
 
     private static JsonObject GetSpecDocumentContext() => Tool(
-        name: "get_spec_document_context",
-        description:
-            "Search the extracted spec document text for a specific luminaire to answer deep technical questions " +
-            "about installation procedures, certifications, photometric data, mounting requirements, " +
-            "wiring diagrams, or safety ratings. Use when the user asks a question that requires " +
-            "information beyond the structured catalog data.",
-        properties: new JsonObject
+        "get_spec_document_context",
+        "Search spec PDF text for installation, certification, photometric, or mounting details.",
+        new JsonObject
         {
-            ["product_id"] = Prop("integer", "Internal product ID from a previous search or product detail call", required: true),
-            ["question"] = Prop("string", "The specific technical question to answer e.g. 'What is the mounting depth?'", required: true)
+            ["product_id"] = Prop("integer", "Product ID from a prior search", req: true),
+            ["question"]   = Prop("string",  "Technical question e.g. 'What is the mounting depth?'", req: true)
         },
-        required: ["product_id", "question"]);
-
-    // ── Tool 6 ────────────────────────────────────────────────────────────────
+        ["product_id", "question"]);
 
     private static JsonObject RecommendForProject() => Tool(
-        name: "recommend_for_project",
-        description:
-            "Generate a curated multi-area product recommendation set for a named project type or building typology. " +
-            "Use whenever the user mentions a project type (hotel, campus, villa, park, airport, hospital, " +
-            "residential community, shopping mall) or asks for lighting recommendations for a named building use. " +
-            "Also use when a budget ceiling is provided alongside a project description.",
-        properties: new JsonObject
+        "recommend_for_project",
+        "Multi-area product recommendations for a named project type (hotel, villa, campus, park, hospital, airport, etc.).",
+        new JsonObject
         {
-            ["project_type"] = Prop("string", "Named project type e.g. '5-star hotel', 'university campus', 'luxury villa', 'public park'", required: true),
-            ["areas"] = new JsonObject
+            ["project_type"]   = Prop("string", "e.g. '5-star hotel', 'university campus', 'luxury villa'", req: true),
+            ["areas"]          = new JsonObject
             {
                 ["type"] = "array",
-                ["description"] = "Project areas to recommend for e.g. ['entrance', 'pathways', 'facade', 'parking', 'pool area']",
+                ["description"] = "Areas to cover e.g. ['entrance','pathways','facade']",
                 ["items"] = new JsonObject { ["type"] = "string" }
             },
-            ["budget_usd"] = Prop("number", "Upper ceiling on total DNP in USD. Lower-price options are prioritised when set"),
+            ["budget_usd"]     = Prop("number", "Total DNP budget ceiling in USD"),
             ["style_keywords"] = new JsonObject
             {
                 ["type"] = "array",
-                ["description"] = "Design style hints e.g. ['minimalist', 'warm white', 'dark sky compliant']",
+                ["description"] = "Style hints e.g. ['minimalist','warm white','dark sky']",
                 ["items"] = new JsonObject { ["type"] = "string" }
             },
-            ["category"] = Prop("string", "Scope to 'Exterior', 'Interior', or omit for both")
+            ["category"] = Prop("string", "'Exterior' | 'Interior' | omit for both")
         },
-        required: ["project_type"]);
-
-    // ── Tool 7 ────────────────────────────────────────────────────────────────
+        ["project_type"]);
 
     private static JsonObject GenerateBillOfMaterials() => Tool(
-        name: "generate_bill_of_materials",
-        description:
-            "Assemble a structured, priced bill of materials from a list of catalog numbers and quantities. " +
-            "Use when the user asks for a BOM, cost estimate, price breakdown, or quantity list. " +
-            "Never estimate prices from memory — always call this tool to get real DNP/MSRP from the catalog database.",
-        properties: new JsonObject
+        "generate_bill_of_materials",
+        "Priced BOM from catalog numbers and quantities. Always call this — never estimate prices from memory.",
+        new JsonObject
         {
             ["items"] = new JsonObject
             {
                 ["type"] = "array",
-                ["description"] = "Line items for the BOM",
+                ["description"] = "Line items",
                 ["items"] = new JsonObject
                 {
                     ["type"] = "object",
                     ["properties"] = new JsonObject
                     {
-                        ["catalog_number"] = Prop("string", "BEGA catalog number e.g. '77127'"),
-                        ["quantity"] = Prop("integer", "Number of units"),
-                        ["area_label"] = Prop("string", "Area or location label e.g. 'Main entrance'")
+                        ["catalog_number"] = Prop("string",  "BEGA catalog number"),
+                        ["quantity"]       = Prop("integer", "Units"),
+                        ["area_label"]     = Prop("string",  "Location label e.g. 'Main entrance'")
                     },
                     ["required"] = new JsonArray { "catalog_number", "quantity" }
                 }
             },
-            ["project_name"] = Prop("string", "Optional project name included in the BOM header")
+            ["project_name"] = Prop("string", "Optional project name")
         },
-        required: ["items"]);
-
-    // ── Tool 8 ────────────────────────────────────────────────────────────────
+        ["items"]);
 
     private static JsonObject SearchFurniture() => Tool(
-        name: "search_furniture",
-        description:
-            "Search BEGA's outdoor furniture and urban design element catalog — separate from luminaires. " +
-            "Use when the user asks about benches, seating, litter bins, planters, bollard-furniture, " +
-            "modular furniture, cycle stands, or any non-luminaire BEGA product. " +
-            "Furniture products have no wattage, lumen, or CCT attributes.",
-        properties: new JsonObject
+        "search_furniture",
+        "Search BEGA outdoor furniture: benches, planters, bollards, litter bins, modular furniture, cycle stands.",
+        new JsonObject
         {
-            ["query"] = Prop("string", "Natural language description e.g. 'outdoor benches for a waterfront plaza'", required: true),
-            ["furniture_type"] = Prop("string", "Product type e.g. 'bench', 'bollard', 'planter', 'modular seating', 'litter bin', 'cycle stand'"),
-            ["application"] = Prop("string", "Application context e.g. 'public plaza', 'campus', 'waterfront', 'smart city'"),
-            ["material"] = Prop("string", "Material preference e.g. 'steel', 'concrete', 'wood'"),
-            ["illuminated"] = Prop("boolean", "When true, restrict to furniture with integrated lighting"),
-            ["top_k"] = Prop("integer", "Maximum number of results to return. Default 5")
+            ["query"]          = Prop("string",  "e.g. 'outdoor benches for a waterfront plaza'", req: true),
+            ["furniture_type"] = Prop("string",  "bench|bollard|planter|modular seating|litter bin|cycle stand"),
+            ["application"]    = Prop("string",  "e.g. 'public plaza', 'campus', 'waterfront'"),
+            ["illuminated"]    = Prop("boolean", "Furniture with integrated lighting only"),
+            ["top_k"]          = Prop("integer", "Max results (default 5)")
         },
-        required: ["query"]);
+        ["query"]);
 
     // ── Schema helpers ────────────────────────────────────────────────────────
 
-    private static JsonObject Tool(
-        string name,
-        string description,
-        JsonObject properties,
-        string[] required) => new()
-    {
-        ["name"] = name,
-        ["description"] = description,
-        ["input_schema"] = new JsonObject
+    private static JsonObject Tool(string name, string description, JsonObject properties, string[] required) =>
+        new()
         {
-            ["type"] = "object",
-            ["properties"] = properties,
-            ["required"] = new JsonArray(required.Select(r => (JsonNode)r!).ToArray())
-        }
-    };
+            ["name"] = name,
+            ["description"] = description,
+            ["input_schema"] = new JsonObject
+            {
+                ["type"] = "object",
+                ["properties"] = properties,
+                ["required"] = new JsonArray(required.Select(r => (JsonNode)r!).ToArray())
+            }
+        };
 
-    private static JsonObject Prop(string type, string description, bool required = false) => new()
-    {
-        ["type"] = type,
-        ["description"] = description
-    };
+    private static JsonObject Prop(string type, string description, bool req = false) =>
+        new() { ["type"] = type, ["description"] = description };
 }
