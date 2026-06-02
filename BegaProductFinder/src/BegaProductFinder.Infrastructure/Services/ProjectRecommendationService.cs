@@ -15,79 +15,347 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
     private readonly IProductSearchService _productSearch;
     private readonly ILogger<ProjectRecommendationService> _logger;
 
-    // Default areas inferred per project type when the caller provides none
+    // Default areas inferred per project type when the caller provides none.
+    // Organised by the eight sector categories:
+    //   Civic & Cultural | Hospitality | Healthcare | Corporate Offices |
+    //   Education & Research | Sports & Recreation | Residential | Transportation
     private static readonly Dictionary<string, string[]> DefaultAreasByProjectType =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["hotel"]            = ["entrance", "pathways", "facade", "parking", "landscape"],
-            ["5-star hotel"]     = ["entrance", "pathways", "facade", "pool area", "landscape"],
-            ["luxury hotel"]     = ["entrance", "pathways", "facade", "pool area", "landscape"],
-            ["villa"]            = ["entrance", "driveway", "garden", "pool area", "facade"],
-            ["luxury villa"]     = ["entrance", "driveway", "garden", "pool area", "facade"],
-            ["university campus"]= ["pathways", "parking", "entrance", "landscape", "sports areas"],
-            ["campus"]           = ["pathways", "parking", "entrance", "landscape"],
-            ["park"]             = ["pathways", "landscape", "entrance", "seating areas"],
-            ["public park"]      = ["pathways", "landscape", "feature trees", "seating areas"],
-            ["airport"]          = ["entrance canopy", "access roads", "parking", "landscape"],
-            ["hospital"]         = ["entrance", "car park", "pathways", "emergency access"],
-            ["shopping mall"]    = ["entrance", "car park", "pathways", "facade"],
-            ["waterfront"]       = ["promenade", "seating areas", "feature lighting", "pathways"],
-            ["residential"]      = ["entrance", "driveway", "garden", "pathways"],
+            // ── Civic & Cultural ──────────────────────────────────────────────
+            ["museum"]                  = ["entrance", "outdoor sculpture garden", "pathways", "facade", "parking"],
+            ["art gallery"]             = ["entrance", "outdoor exhibition area", "facade", "pathways", "parking"],
+            ["library"]                 = ["entrance", "outdoor reading areas", "pathways", "parking", "facade"],
+            ["theater"]                 = ["entrance", "forecourt", "facade", "pathways", "parking"],
+            ["concert hall"]            = ["entrance", "forecourt", "facade", "pathways", "parking"],
+            ["opera house"]             = ["entrance", "forecourt", "facade", "outdoor plaza", "pathways"],
+            ["cultural center"]         = ["entrance", "outdoor plaza", "pathways", "facade", "parking"],
+            ["community center"]        = ["entrance", "outdoor plaza", "pathways", "sports courts", "parking"],
+            ["government building"]     = ["entrance", "forecourt", "pathways", "flag area", "parking"],
+            ["courthouse"]              = ["entrance", "forecourt", "pathways", "parking", "landscape"],
+            ["city hall"]               = ["entrance", "forecourt", "outdoor plaza", "pathways", "landscape"],
+            ["place of worship"]        = ["entrance", "garden", "pathways", "parking", "facade"],
+            ["mosque"]                  = ["entrance", "courtyard", "garden", "pathways", "parking"],
+            ["church"]                  = ["entrance", "garden", "pathways", "parking", "facade"],
+            ["memorial"]                = ["entrance", "feature lighting", "pathways", "landscape", "seating areas"],
+            ["monument"]                = ["feature lighting", "pathways", "landscape", "seating areas"],
+            ["civic plaza"]             = ["outdoor plaza", "seating areas", "pathways", "feature lighting", "landscape"],
+            ["public square"]           = ["outdoor plaza", "seating areas", "pathways", "feature lighting", "landscape"],
+
+            // ── Hospitality ───────────────────────────────────────────────────
+            ["hotel"]                   = ["entrance", "pathways", "facade", "parking", "landscape"],
+            ["5-star hotel"]            = ["entrance", "pathways", "facade", "pool area", "landscape"],
+            ["luxury hotel"]            = ["entrance", "pathways", "facade", "pool area", "landscape"],
+            ["boutique hotel"]          = ["entrance", "courtyard", "garden", "facade", "parking"],
+            ["resort"]                  = ["entrance", "beach access", "pool area", "outdoor dining", "landscape"],
+            ["beach resort"]            = ["entrance", "beach access", "pool area", "outdoor dining", "promenade"],
+            ["spa resort"]              = ["entrance", "pool area", "relaxation garden", "pathways", "facade"],
+            ["restaurant"]              = ["entrance", "outdoor dining", "parking", "facade", "landscape"],
+            ["fine dining restaurant"]  = ["entrance", "outdoor terrace", "facade", "garden", "parking"],
+            ["bar"]                     = ["entrance", "outdoor terrace", "facade", "pathways"],
+            ["cafe"]                    = ["entrance", "outdoor seating", "facade", "pathways"],
+            ["spa"]                     = ["entrance", "pool area", "relaxation garden", "pathways", "facade"],
+            ["waterfront"]              = ["promenade", "seating areas", "feature lighting", "pathways"],
+            ["shopping mall"]           = ["entrance", "car park", "pathways", "facade"],
+            ["retail park"]             = ["entrance", "car park", "pathways", "facade", "landscape"],
+
+            // ── Healthcare ────────────────────────────────────────────────────
+            ["hospital"]                = ["entrance", "car park", "pathways", "emergency access"],
+            ["medical center"]          = ["entrance", "car park", "pathways", "ambulance bay", "landscape"],
+            ["clinic"]                  = ["entrance", "parking", "pathways", "facade"],
+            ["nursing home"]            = ["entrance", "garden", "pathways", "parking", "seating areas"],
+            ["care home"]               = ["entrance", "garden", "pathways", "parking", "seating areas"],
+            ["rehabilitation center"]   = ["entrance", "therapy garden", "pathways", "parking", "seating areas"],
+            ["mental health facility"]  = ["entrance", "therapeutic garden", "pathways", "seating areas", "parking"],
+            ["dental clinic"]           = ["entrance", "parking", "pathways", "facade"],
+            ["pharmacy"]                = ["entrance", "parking", "pathways", "facade"],
+            ["wellness center"]         = ["entrance", "outdoor relaxation area", "pathways", "parking", "facade"],
+
+            // ── Corporate Offices ─────────────────────────────────────────────
+            ["office building"]         = ["entrance", "outdoor plaza", "car park", "pathways", "facade"],
+            ["corporate headquarters"]  = ["entrance", "outdoor plaza", "car park", "pathways", "facade", "landscape"],
+            ["business park"]           = ["entrance", "pathways", "car park", "landscape", "outdoor seating"],
+            ["tech campus"]             = ["entrance", "outdoor collaboration areas", "pathways", "parking", "landscape"],
+            ["co-working space"]        = ["entrance", "outdoor terrace", "parking", "pathways", "facade"],
+            ["data center"]             = ["entrance", "perimeter security", "car park", "pathways", "facade"],
+            ["mixed use development"]   = ["entrance", "outdoor plaza", "pathways", "car park", "facade", "landscape"],
+
+            // ── Education & Research ──────────────────────────────────────────
+            ["university campus"]       = ["pathways", "parking", "entrance", "landscape", "sports areas"],
+            ["campus"]                  = ["pathways", "parking", "entrance", "landscape"],
+            ["school"]                  = ["entrance", "playgrounds", "pathways", "parking", "sports fields"],
+            ["primary school"]          = ["entrance", "playgrounds", "pathways", "parking"],
+            ["secondary school"]        = ["entrance", "sports courts", "pathways", "parking", "landscape"],
+            ["college"]                 = ["entrance", "pathways", "parking", "landscape", "outdoor study areas"],
+            ["research center"]         = ["entrance", "pathways", "parking", "outdoor labs", "landscape"],
+            ["laboratory"]              = ["entrance", "pathways", "parking", "service yard", "facade"],
+            ["science park"]            = ["entrance", "pathways", "parking", "landscape", "outdoor seating"],
+            ["student accommodation"]   = ["entrance", "pathways", "parking", "garden", "common areas"],
+
+            // ── Sports & Recreation ───────────────────────────────────────────
+            ["stadium"]                 = ["entrance", "concourse", "parking", "pathways", "facade"],
+            ["football stadium"]        = ["entrance", "concourse", "parking", "pathways", "perimeter"],
+            ["sports center"]           = ["entrance", "outdoor courts", "parking", "pathways", "facade"],
+            ["sports complex"]          = ["entrance", "outdoor courts", "parking", "pathways", "landscape"],
+            ["swimming complex"]        = ["entrance", "poolside", "pathways", "parking", "landscape"],
+            ["aquatic center"]          = ["entrance", "poolside", "pathways", "parking", "landscape"],
+            ["golf course"]             = ["entrance", "pathways", "parking", "clubhouse", "course lighting"],
+            ["tennis club"]             = ["entrance", "outdoor courts", "pathways", "parking", "clubhouse"],
+            ["gym"]                     = ["entrance", "outdoor training area", "parking", "pathways"],
+            ["fitness center"]          = ["entrance", "outdoor training area", "parking", "pathways", "facade"],
+            ["recreation center"]       = ["entrance", "outdoor play areas", "pathways", "parking", "landscape"],
+            ["cycling track"]           = ["entrance", "track perimeter", "pathways", "parking", "seating areas"],
+            ["park"]                    = ["pathways", "landscape", "entrance", "seating areas"],
+            ["public park"]             = ["pathways", "landscape", "feature trees", "seating areas"],
+            ["botanical garden"]        = ["entrance", "feature trees", "pathways", "seating areas", "water features"],
+            ["playground"]              = ["entrance", "play equipment area", "pathways", "parking"],
+            ["marina"]                  = ["entrance", "dock walkways", "parking", "waterfront", "clubhouse"],
+
+            // ── Residential ───────────────────────────────────────────────────
+            ["villa"]                   = ["entrance", "driveway", "garden", "pool area", "facade"],
+            ["luxury villa"]            = ["entrance", "driveway", "garden", "pool area", "facade"],
+            ["residential"]             = ["entrance", "driveway", "garden", "pathways"],
+            ["apartment complex"]       = ["entrance", "pathways", "parking", "garden", "common areas"],
+            ["residential complex"]     = ["entrance", "pathways", "parking", "garden", "common areas"],
+            ["housing estate"]          = ["entrance", "pathways", "parking", "common garden", "play areas"],
+            ["condo"]                   = ["entrance", "lobby", "pathways", "parking", "pool area"],
+            ["condominium"]             = ["entrance", "lobby", "pathways", "parking", "pool area"],
+            ["townhouse"]               = ["entrance", "driveway", "garden", "pathways"],
+            ["penthouse"]               = ["entrance", "terrace", "garden", "facade"],
+            ["gated community"]         = ["entrance gate", "pathways", "common garden", "parking", "sports areas"],
+
+            // ── Transportation ────────────────────────────────────────────────
+            ["airport"]                 = ["entrance canopy", "access roads", "parking", "landscape"],
+            ["train station"]           = ["entrance", "platforms", "pathways", "parking", "drop-off zone"],
+            ["railway station"]         = ["entrance", "platforms", "pathways", "parking", "drop-off zone"],
+            ["bus terminal"]            = ["entrance", "platforms", "pathways", "parking", "drop-off zone"],
+            ["bus station"]             = ["entrance", "platforms", "pathways", "parking"],
+            ["metro station"]           = ["entrance", "pathways", "parking", "drop-off zone"],
+            ["subway station"]          = ["entrance", "pathways", "drop-off zone", "landscape"],
+            ["ferry terminal"]          = ["entrance", "dock walkways", "parking", "waterfront", "pathways"],
+            ["port"]                    = ["entrance", "dock walkways", "parking", "waterfront", "perimeter"],
+            ["logistics hub"]           = ["entrance", "loading bays", "perimeter security", "car park", "pathways"],
+            ["parking structure"]       = ["entrance", "ramps", "pedestrian pathways", "facade", "street level"],
+            ["highway rest area"]       = ["entrance", "parking", "pathways", "landscape", "seating areas"],
         };
 
     /// <summary>
-    /// Maps each project area to the luminaire groups most appropriate for that space.
-    /// First entry in the array is the primary group tried first; subsequent entries are fallbacks
+    /// Maps each project area to the BEGA product groups most appropriate for that space.
+    /// Groups match the exact GroupsName values from the BEGA US catalog
+    /// (Lighting › Exterior, Lighting › Interior, Controls › Hardware,
+    /// Furniture › Furniture). First entry is the primary group; subsequent entries are fallbacks
     /// tried in sequence until results are found.
     /// </summary>
     private static readonly Dictionary<string, string[]> AreaGroupPriority =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["entrance"]         = ["Wall", "Bollard", "In-grade"],
-            ["pathways"]         = ["Bollard", "Garden"],
-            ["pathway"]          = ["Bollard", "Garden"],
-            ["facade"]           = ["Floodlight", "Wall"],
-            ["parking"]          = ["Floodlight", "Pole-top", "Pole"],
-            ["landscape"]        = ["Garden", "Bollard"],
-            ["pool area"]        = ["In-grade", "Recessed Wall"],
-            ["garden"]           = ["Garden", "Bollard"],
-            ["driveway"]         = ["Bollard", "In-grade"],
-            ["feature trees"]    = ["Floodlight", "In-grade"],
-            ["seating areas"]    = ["Bollard", "Garden"],
-            ["promenade"]        = ["Bollard", "Garden"],
-            ["feature lighting"] = ["Floodlight"],
-            ["car park"]         = ["Floodlight", "Pole-top"],
-            ["emergency access"] = ["Floodlight", "Wall"],
-            ["entrance canopy"]  = ["Recessed Ceiling", "Ceiling"],
-            ["access roads"]     = ["Floodlight", "Pole"],
-            ["sports areas"]     = ["Floodlight"],
+            // ── Ground / path level ───────────────────────────────────────────
+            ["entrance"]                  = ["Wall", "Bollard", "In-grade", "Recessed Wall"],
+            ["entrance gate"]             = ["Wall", "Bollard", "In-grade"],
+            ["pathways"]                  = ["Bollard", "Garden", "In-grade"],
+            ["pathway"]                   = ["Bollard", "Garden", "In-grade"],
+            ["driveway"]                  = ["Bollard", "In-grade", "Garden"],
+            ["promenade"]                 = ["Bollard", "Garden", "Pole-top"],
+            ["pedestrian pathways"]       = ["Bollard", "Garden", "In-grade"],
+            ["dock walkways"]             = ["Bollard", "Garden", "In-grade"],
+            ["beach access"]              = ["Bollard", "In-grade", "Floodlight"],
+            ["platforms"]                 = ["Recessed Wall", "Wall", "Bollard", "Ceiling"],
+            ["concourse"]                 = ["Floodlight", "Pole-top", "Bollard"],
+
+            // ── Facade / architectural ────────────────────────────────────────
+            ["facade"]                    = ["Floodlight", "Linear Facade", "Wall", "Building Element"],
+            ["linear facade"]             = ["Linear Facade", "Floodlight"],
+            ["building element"]          = ["Building Element", "Linear Facade"],
+            ["feature lighting"]          = ["Floodlight", "Linear Facade", "In-grade"],
+
+            // ── Overhead canopy ───────────────────────────────────────────────
+            ["entrance canopy"]           = ["Recessed Ceiling", "Ceiling", "Pendant"],
+            ["covered walkways"]          = ["Recessed Ceiling", "Ceiling", "Catenary"],
+
+            // ── Overhead span / catenary ──────────────────────────────────────
+            ["outdoor dining"]            = ["Catenary", "Pendant", "Wall", "Garden"],
+            ["outdoor terrace"]           = ["Catenary", "Wall", "Garden", "Bollard"],
+            ["terrace"]                   = ["Wall", "Pendant", "Catenary", "Garden"],
+
+            // ── Vehicle / parking ─────────────────────────────────────────────
+            ["parking"]                   = ["Floodlight", "Pole-top", "Pole"],
+            ["car park"]                  = ["Floodlight", "Pole-top", "Pole"],
+            ["access roads"]              = ["Pole", "Pole-top", "Floodlight"],
+            ["drop-off zone"]             = ["Floodlight", "Wall", "Pole-top"],
+            ["ambulance bay"]             = ["Floodlight", "Wall"],
+            ["emergency access"]          = ["Floodlight", "Wall", "Pole"],
+            ["loading bays"]              = ["Floodlight", "Wall", "Pole"],
+            ["service yard"]              = ["Floodlight", "Wall"],
+            ["ramps"]                     = ["Recessed Wall", "Wall", "In-grade"],
+            ["street level"]              = ["Bollard", "Wall", "Floodlight"],
+
+            // ── Perimeter / security ──────────────────────────────────────────
+            ["perimeter"]                 = ["Floodlight", "Pole", "Wall"],
+            ["perimeter security"]        = ["Floodlight", "Wall", "Pole"],
+
+            // ── Landscape / nature ────────────────────────────────────────────
+            ["landscape"]                 = ["Garden", "Bollard", "Floodlight"],
+            ["garden"]                    = ["Garden", "Bollard", "In-grade"],
+            ["pool area"]                 = ["In-grade", "Recessed Wall", "Wall"],
+            ["poolside"]                  = ["In-grade", "Recessed Wall", "Wall"],
+            ["feature trees"]             = ["Floodlight", "In-grade", "Garden"],
+            ["water features"]            = ["In-grade", "Floodlight"],
+            ["outdoor sculpture garden"]  = ["Floodlight", "In-grade", "Garden"],
+            ["outdoor exhibition area"]   = ["Floodlight", "In-grade", "Wall"],
+            ["therapy garden"]            = ["Garden", "Bollard", "Wall"],
+            ["therapeutic garden"]        = ["Garden", "Bollard", "Wall"],
+            ["relaxation garden"]         = ["Garden", "Bollard", "Wall"],
+            ["common garden"]             = ["Garden", "Bollard"],
+            ["botanical garden"]          = ["Floodlight", "In-grade", "Garden"],
+            ["outdoor relaxation area"]   = ["Garden", "Bollard", "Wall"],
+
+            // ── Play & recreation ─────────────────────────────────────────────
+            ["play areas"]                = ["Bollard", "Garden", "Floodlight"],
+            ["play equipment area"]       = ["Bollard", "Floodlight", "Garden"],
+            ["playgrounds"]               = ["Bollard", "Garden", "Floodlight"],
+            ["sports areas"]              = ["Floodlight", "Pole"],
+            ["sports courts"]             = ["Floodlight", "Pole"],
+            ["sports fields"]             = ["Floodlight", "Pole"],
+            ["outdoor courts"]            = ["Floodlight", "Pole"],
+            ["outdoor training area"]     = ["Floodlight", "Bollard"],
+            ["track perimeter"]           = ["Floodlight", "Pole"],
+            ["putting greens"]            = ["In-grade", "Floodlight"],
+            ["course lighting"]           = ["Floodlight", "In-grade"],
+
+            // ── Public / civic spaces ─────────────────────────────────────────
+            ["outdoor plaza"]             = ["Bollard", "Floodlight", "Pole-top", "Garden"],
+            ["forecourt"]                 = ["Bollard", "Floodlight", "Wall", "In-grade"],
+            ["courtyard"]                 = ["Wall", "Bollard", "Garden", "In-grade", "Pendant"],
+            ["flag area"]                 = ["Floodlight"],
+            ["waterfront"]                = ["Bollard", "Floodlight", "In-grade"],
+            ["memorial lighting"]         = ["Floodlight", "In-grade", "Garden"],
+
+            // ── Seating / social ──────────────────────────────────────────────
+            ["seating areas"]             = ["Bollard", "Garden", "Wall"],
+            ["outdoor seating"]           = ["Bollard", "Garden", "Wall"],
+            ["outdoor reading areas"]     = ["Bollard", "Garden", "Wall"],
+            ["outdoor study areas"]       = ["Bollard", "Garden", "Wall"],
+            ["outdoor collaboration areas"] = ["Bollard", "Garden", "Catenary"],
+            ["relaxation areas"]          = ["Garden", "Bollard", "Wall"],
+            ["common areas"]              = ["Bollard", "Garden", "Wall"],
+
+            // ── Work / research (exterior) ────────────────────────────────────
+            ["outdoor labs"]              = ["Floodlight", "Wall"],
+
+            // ── Hospitality exterior ──────────────────────────────────────────
+            ["clubhouse"]                 = ["Wall", "Pendant", "Recessed Ceiling"],
+
+            // ── Interior ─────────────────────────────────────────────────────
+            ["lobby"]                     = ["Recessed Ceiling", "Wall", "Pendant", "Suspended"],
+            ["student accommodation"]     = ["Recessed Ceiling", "Wall", "Ceiling"],
         };
 
     /// <summary>
-    /// Area-specific query text that names the expected product type explicitly,
-    /// giving the vector search a strong semantic signal beyond just the area name.
+    /// Area-specific natural language query hints that give the vector search a strong
+    /// semantic signal, naming the expected product type and typical application context.
     /// </summary>
     private static readonly Dictionary<string, string> AreaQueryHints =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["entrance"]         = "architectural wall bollard accent luminaire hotel entrance",
-            ["pathways"]         = "bollard pedestrian pathway walkway exterior luminaire",
-            ["pathway"]          = "bollard pedestrian pathway walkway exterior luminaire",
-            ["facade"]           = "floodlight facade wall wash architectural exterior luminaire",
-            ["parking"]          = "parking area floodlight pole exterior luminaire",
-            ["landscape"]        = "garden landscape accent bollard exterior luminaire",
-            ["pool area"]        = "in-grade recessed wet area pool exterior luminaire",
-            ["garden"]           = "garden path accent landscape bollard exterior luminaire",
-            ["driveway"]         = "driveway bollard in-grade path luminaire",
-            ["feature trees"]    = "tree uplight floodlight accent in-grade exterior luminaire",
-            ["seating areas"]    = "seating area ambient bollard garden exterior luminaire",
-            ["promenade"]        = "promenade walkway bollard garden exterior luminaire",
-            ["feature lighting"] = "floodlight feature accent architectural luminaire",
-            ["car park"]         = "car parking floodlight pole area luminaire",
-            ["emergency access"] = "emergency access area wall floodlight luminaire",
-            ["entrance canopy"]  = "recessed ceiling canopy entrance interior luminaire",
-            ["access roads"]     = "road pole floodlight area luminaire",
-            ["sports areas"]     = "sports area floodlight high output luminaire",
+            // ── Ground / path level ───────────────────────────────────────────
+            ["entrance"]                  = "architectural wall bollard accent luminaire entrance",
+            ["entrance gate"]             = "gate bollard wall luminaire gated entrance",
+            ["pathways"]                  = "bollard pedestrian pathway walkway exterior luminaire",
+            ["pathway"]                   = "bollard pedestrian pathway walkway exterior luminaire",
+            ["driveway"]                  = "driveway bollard in-grade path luminaire",
+            ["promenade"]                 = "promenade waterfront walkway bollard garden luminaire",
+            ["pedestrian pathways"]       = "bollard garden pedestrian path luminaire",
+            ["dock walkways"]             = "marina dock waterfront bollard path luminaire",
+            ["beach access"]              = "beach coastal bollard in-grade path luminaire",
+            ["platforms"]                 = "platform recessed wall bollard ceiling luminaire",
+            ["concourse"]                 = "concourse floodlight bollard pole-top luminaire",
+
+            // ── Facade / architectural ────────────────────────────────────────
+            ["facade"]                    = "floodlight linear facade wall wash architectural luminaire",
+            ["linear facade"]             = "linear facade LED strip architectural building luminaire",
+            ["building element"]          = "building element architectural integrated facade luminaire",
+            ["feature lighting"]          = "floodlight feature accent architectural wash luminaire",
+
+            // ── Overhead canopy ───────────────────────────────────────────────
+            ["entrance canopy"]           = "recessed ceiling canopy pendant entrance luminaire",
+            ["covered walkways"]          = "recessed ceiling catenary covered walkway luminaire",
+
+            // ── Overhead span / catenary ──────────────────────────────────────
+            ["outdoor dining"]            = "catenary pendant string outdoor dining restaurant luminaire",
+            ["outdoor terrace"]           = "catenary wall pendant outdoor terrace luminaire",
+            ["terrace"]                   = "wall pendant catenary terrace garden luminaire",
+
+            // ── Vehicle / parking ─────────────────────────────────────────────
+            ["parking"]                   = "parking lot floodlight pole-top pole area luminaire",
+            ["car park"]                  = "car park floodlight pole-top area luminaire",
+            ["access roads"]              = "road pole street floodlight area luminaire",
+            ["drop-off zone"]             = "drop-off floodlight wall pole entrance area luminaire",
+            ["ambulance bay"]             = "emergency ambulance bay floodlight wall luminaire",
+            ["emergency access"]          = "emergency access floodlight wall pole luminaire",
+            ["loading bays"]              = "loading bay floodlight wall industrial luminaire",
+            ["service yard"]              = "service yard floodlight wall luminaire",
+            ["ramps"]                     = "ramp recessed wall in-grade step luminaire",
+            ["street level"]              = "street level bollard wall floodlight luminaire",
+
+            // ── Perimeter / security ──────────────────────────────────────────
+            ["perimeter"]                 = "perimeter floodlight pole wall security luminaire",
+            ["perimeter security"]        = "security perimeter floodlight wall pole luminaire",
+
+            // ── Landscape / nature ────────────────────────────────────────────
+            ["landscape"]                 = "garden landscape bollard accent exterior luminaire",
+            ["garden"]                    = "garden path accent bollard low-level luminaire",
+            ["pool area"]                 = "in-grade recessed wet area pool underwater luminaire",
+            ["poolside"]                  = "poolside in-grade recessed wall wet area luminaire",
+            ["feature trees"]             = "tree uplight floodlight in-grade accent luminaire",
+            ["water features"]            = "water feature in-grade floodlight fountain luminaire",
+            ["outdoor sculpture garden"]  = "sculpture garden floodlight in-grade accent luminaire",
+            ["outdoor exhibition area"]   = "exhibition display floodlight in-grade wall luminaire",
+            ["therapy garden"]            = "therapy garden bollard garden soft ambient luminaire",
+            ["therapeutic garden"]        = "therapeutic garden soft bollard path luminaire",
+            ["relaxation garden"]         = "relaxation garden bollard garden ambient luminaire",
+            ["common garden"]             = "communal garden bollard path garden luminaire",
+            ["botanical garden"]          = "botanical garden in-grade floodlight accent luminaire",
+            ["outdoor relaxation area"]   = "relaxation outdoor garden bollard ambient luminaire",
+
+            // ── Play & recreation ─────────────────────────────────────────────
+            ["play areas"]                = "playground bollard garden safe low luminaire",
+            ["play equipment area"]       = "playground bollard floodlight children luminaire",
+            ["playgrounds"]               = "playground bollard garden ambient luminaire",
+            ["sports areas"]              = "sports area floodlight high-output pole luminaire",
+            ["sports courts"]             = "sports court floodlight pole high-output luminaire",
+            ["sports fields"]             = "sports field floodlight pole high-output luminaire",
+            ["outdoor courts"]            = "outdoor court floodlight pole high-output luminaire",
+            ["outdoor training area"]     = "outdoor training fitness floodlight bollard luminaire",
+            ["track perimeter"]           = "athletics track perimeter floodlight pole luminaire",
+            ["putting greens"]            = "golf in-grade floodlight putting green luminaire",
+            ["course lighting"]           = "golf course floodlight in-grade luminaire",
+
+            // ── Public / civic spaces ─────────────────────────────────────────
+            ["outdoor plaza"]             = "plaza bollard pole-top floodlight public luminaire",
+            ["forecourt"]                 = "forecourt bollard floodlight wall in-grade luminaire",
+            ["courtyard"]                 = "courtyard wall bollard pendant garden luminaire",
+            ["flag area"]                 = "flagpole floodlight uplight luminaire",
+            ["waterfront"]                = "waterfront bollard in-grade promenade luminaire",
+            ["memorial lighting"]         = "memorial monument floodlight in-grade accent luminaire",
+
+            // ── Seating / social ──────────────────────────────────────────────
+            ["seating areas"]             = "seating area bollard garden ambient luminaire",
+            ["outdoor seating"]           = "outdoor seating bollard garden ambient luminaire",
+            ["outdoor reading areas"]     = "reading area bollard garden soft luminaire",
+            ["outdoor study areas"]       = "study area bollard garden ambient luminaire",
+            ["outdoor collaboration areas"] = "collaboration outdoor catenary bollard luminaire",
+            ["relaxation areas"]          = "relaxation garden bollard ambient soft luminaire",
+            ["common areas"]              = "common area bollard garden wall luminaire",
+
+            // ── Work / research (exterior) ────────────────────────────────────
+            ["outdoor labs"]              = "outdoor laboratory floodlight wall luminaire",
+
+            // ── Hospitality exterior ──────────────────────────────────────────
+            ["clubhouse"]                 = "clubhouse wall pendant recessed ceiling luminaire",
+
+            // ── Interior ─────────────────────────────────────────────────────
+            ["lobby"]                     = "lobby recessed ceiling pendant wall suspended luminaire",
+            ["student accommodation"]     = "student hall recessed ceiling wall luminaire",
         };
 
     public ProjectRecommendationService(
@@ -145,8 +413,9 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
             queryHint ?? $"luminaire for {area}",
             projectType
         };
-        if (!string.IsNullOrWhiteSpace(styleHint))
-            queryParts.Add(styleHint);
+        Console.WriteLine($"area:- {area}; queryHint:- {queryHint}; styleHint:- {styleHint}");
+        //if (!string.IsNullOrWhiteSpace(styleHint))
+        //    queryParts.Add(styleHint);
 
         var query = string.Join(" ", queryParts);
 
