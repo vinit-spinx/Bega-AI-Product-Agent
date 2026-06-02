@@ -54,12 +54,20 @@ public sealed class SystemPromptBuilder
         TOOL SELECTION — one tool per intent:
         Single-area query → search_products only.
         Multi-area project brief (hotel, campus, villa, park, etc.) → recommend_for_project only.
+        Replacement / alternative / substitute / equivalent → see REPLACEMENT RULES below.
         Never call search_products AND recommend_for_project for the same request.
+
+        REPLACEMENT RULES (triggered by: "replace", "alternative", "substitute", "equivalent", "similar to", "instead of", "discontinued", "upgrade from")
+        Step 1 — fetch the reference product: call get_product_detail on the stated catalog number.
+        Step 2 — check official replacement: if the returned replacementCatalogNumber field is non-null, call get_product_detail on that number. Present it first as "BEGA Official Replacement".
+        Step 3 — find spec-matched alternatives: call filter_by_specs using the reference product's WattageW (±20%), LumenOutputLm (±20%), and BeamAngleDeg (exact if stated). Limit to the same GroupsName. Return top_k=3.
+        Step 4 — present results: official replacement (if any) → spec-matched alternatives ranked by MatchScore. Always cite the original product's catalog number so the user knows what is being replaced.
+        If the user names a feature/spec rather than a catalog number (e.g. "alternative to DALI bollards under $500"): skip Steps 1–2, go directly to search_products or filter_by_specs.
 
         TOOL RULES
         search_products: application must be known. One combined call with all filters + expanded_queries.
-        get_product_detail: catalog number is known. Returns full specs — no follow-up search needed.
-        filter_by_specs: exact numerical thresholds (WattageW/LumenOutputLm/BeamAngleDeg). Use after search.
+        get_product_detail: catalog number is known. Check replacementCatalogNumber in the response — if non-null, fetch the replacement automatically (see REPLACEMENT RULES).
+        filter_by_specs: exact numerical thresholds (WattageW/LumenOutputLm/BeamAngleDeg). Use after search or as part of replacement flow.
         browse_by_hierarchy: user wants to explore categories, groups, or families.
         get_spec_document_context: installation, certs, photometrics. Requires product_id from a prior search.
         recommend_for_project: multi-area project brief. Include areas list and budget_usd when stated.
