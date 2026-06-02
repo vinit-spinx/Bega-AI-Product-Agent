@@ -179,7 +179,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
             // Execute tool calls — skip exact duplicates to avoid redundant API/DB round-trips
             var toolResultsArray = new JsonArray();
-
+            Console.WriteLine("toolCalls:- " + toolCalls.Count);
             foreach (var tc in toolCalls)
             {
                 var dedupeKey = $"{tc.Name}::{tc.Input.ToJsonString()}";
@@ -230,13 +230,38 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             JsonObject[] tools,
             [EnumeratorCancellation] CancellationToken ct)
     {
+        // System prompt as content-block array so the cache_control breakpoint can be set.
+        // Everything up to and including this block is eligible for caching on subsequent calls.
+        var systemArray = new JsonArray
+        {
+            new JsonObject
+            {
+                ["type"] = "text",
+                ["text"] = systemPrompt,
+                ["cache_control"] = new JsonObject { ["type"] = "ephemeral" }
+            }
+        };
+
+        // Clone all tool definitions; add cache_control only to the LAST one.
+        // The cache covers the system block + all tools together as one prefix.
+        var toolNodes = tools
+            .Select((t, i) =>
+            {
+                var clone = (JsonObject)t.DeepClone();
+                if (i == tools.Length - 1)
+                    clone["cache_control"] = new JsonObject { ["type"] = "ephemeral" };
+                return (JsonNode)clone;
+            })
+            .ToArray();
+
         var requestBody = new JsonObject
         {
             ["model"] = _model,
             ["max_tokens"] = _maxTokens,
-            ["system"] = systemPrompt,
+            ["temperature"] = 0.2,
+            ["system"] = systemArray,
             ["stream"] = true,
-            ["tools"] = new JsonArray(tools.Select(t => (JsonNode)t.DeepClone()).ToArray()),
+            ["tools"] = new JsonArray(toolNodes),
             ["messages"] = new JsonArray(apiMessages.Select(m => (JsonNode)m.DeepClone()).ToArray())
         };
 
@@ -244,6 +269,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
         request.Headers.Add("x-api-key", _apiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
+        request.Headers.Add("anthropic-beta", "prompt-caching-2024-07-31");
         request.Content = new StringContent(requestBody.ToJsonString(), Encoding.UTF8, "application/json");
 
         HttpResponseMessage? response = null;
@@ -292,70 +318,70 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             switch (type)
             {
                 case "content_block_start":
-                {
-                    var index = obj["index"]?.GetValue<int>() ?? 0;
-                    var block = obj["content_block"] as JsonObject;
-                    var blockType = block?["type"]?.GetValue<string>();
-
-                    if (blockType == "text")
-                        textBlocks[index] = new StringBuilder();
-                    else if (blockType == "tool_use")
                     {
-                        var id = block!["id"]?.GetValue<string>() ?? string.Empty;
-                        var name = block["name"]?.GetValue<string>() ?? string.Empty;
-                        toolBlocks[index] = (id, name, new StringBuilder());
+                        var index = obj["index"]?.GetValue<int>() ?? 0;
+                        var block = obj["content_block"] as JsonObject;
+                        var blockType = block?["type"]?.GetValue<string>();
+
+                        if (blockType == "text")
+                            textBlocks[index] = new StringBuilder();
+                        else if (blockType == "tool_use")
+                        {
+                            var id = block!["id"]?.GetValue<string>() ?? string.Empty;
+                            var name = block["name"]?.GetValue<string>() ?? string.Empty;
+                            toolBlocks[index] = (id, name, new StringBuilder());
+                        }
+                        break;
                     }
-                    break;
-                }
 
                 case "content_block_delta":
-                {
-                    var index = obj["index"]?.GetValue<int>() ?? 0;
-                    var delta = obj["delta"] as JsonObject;
-                    var deltaType = delta?["type"]?.GetValue<string>();
+                    {
+                        var index = obj["index"]?.GetValue<int>() ?? 0;
+                        var delta = obj["delta"] as JsonObject;
+                        var deltaType = delta?["type"]?.GetValue<string>();
 
-                    if (deltaType == "text_delta" && textBlocks.TryGetValue(index, out var textSb))
-                    {
-                        var text = delta!["text"]?.GetValue<string>() ?? string.Empty;
-                        textSb.Append(text);
-                        yield return (new AgentStreamChunk { Type = AgentStreamEventType.TextDelta, Content = text }, null, null);
+                        if (deltaType == "text_delta" && textBlocks.TryGetValue(index, out var textSb))
+                        {
+                            var text = delta!["text"]?.GetValue<string>() ?? string.Empty;
+                            textSb.Append(text);
+                            yield return (new AgentStreamChunk { Type = AgentStreamEventType.TextDelta, Content = text }, null, null);
+                        }
+                        else if (deltaType == "input_json_delta" && toolBlocks.TryGetValue(index, out var tb))
+                        {
+                            var partialJson = delta!["partial_json"]?.GetValue<string>() ?? string.Empty;
+                            tb.JsonBuffer.Append(partialJson);
+                        }
+                        break;
                     }
-                    else if (deltaType == "input_json_delta" && toolBlocks.TryGetValue(index, out var tb))
-                    {
-                        var partialJson = delta!["partial_json"]?.GetValue<string>() ?? string.Empty;
-                        tb.JsonBuffer.Append(partialJson);
-                    }
-                    break;
-                }
 
                 case "content_block_stop":
-                {
-                    var index = obj["index"]?.GetValue<int>() ?? 0;
-
-                    if (toolBlocks.TryGetValue(index, out var tb))
                     {
-                        JsonObject? input = null;
-                        try
-                        {
-                            input = JsonNode.Parse(tb.JsonBuffer.ToString()) as JsonObject ?? new JsonObject();
-                        }
-                        catch
-                        {
-                            input = new JsonObject();
-                        }
+                        var index = obj["index"]?.GetValue<int>() ?? 0;
 
-                        yield return (null, new CollectedToolCall(tb.Id, tb.Name, input), null);
-                        toolBlocks.Remove(index);
+                        if (toolBlocks.TryGetValue(index, out var tb))
+                        {
+                            JsonObject? input = null;
+                            try
+                            {
+                                input = JsonNode.Parse(tb.JsonBuffer.ToString()) as JsonObject ?? new JsonObject();
+                            }
+                            catch
+                            {
+                                input = new JsonObject();
+                            }
+
+                            yield return (null, new CollectedToolCall(tb.Id, tb.Name, input), null);
+                            toolBlocks.Remove(index);
+                        }
+                        break;
                     }
-                    break;
-                }
 
                 case "message_delta":
-                {
-                    var delta = obj["delta"] as JsonObject;
-                    stopReason = delta?["stop_reason"]?.GetValue<string>();
-                    break;
-                }
+                    {
+                        var delta = obj["delta"] as JsonObject;
+                        stopReason = delta?["stop_reason"]?.GetValue<string>();
+                        break;
+                    }
 
                 case "message_stop":
                     yield return (null, null, stopReason ?? "end_turn");
@@ -416,23 +442,23 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
         var filters = new ProductSearchFilters
         {
-            Category        = input["category"]?.GetValue<string>(),
-            Group           = input["group"]?.GetValue<string>(),
-            FamilyName      = input["family_name"]?.GetValue<string>(),
-            MinWattageW     = TryGetDecimal(input["min_wattage_w"]),
-            MaxWattageW     = TryGetDecimal(input["max_wattage_w"]),
-            MinLumenOutput  = TryGetDecimal(input["min_lumen_output"]),
-            MaxLumenOutput  = TryGetDecimal(input["max_lumen_output"]),
+            Category = input["category"]?.GetValue<string>(),
+            Group = input["group"]?.GetValue<string>(),
+            FamilyName = input["family_name"]?.GetValue<string>(),
+            MinWattageW = TryGetDecimal(input["min_wattage_w"]),
+            MaxWattageW = TryGetDecimal(input["max_wattage_w"]),
+            MinLumenOutput = TryGetDecimal(input["min_lumen_output"]),
+            MaxLumenOutput = TryGetDecimal(input["max_lumen_output"]),
             MinBeamAngleDeg = TryGetDecimal(input["min_beam_angle_deg"]),
             MaxBeamAngleDeg = TryGetDecimal(input["max_beam_angle_deg"]),
             ColorTemperatureK = input["color_temperature_k"]?.GetValue<int?>(),
-            Voltage         = input["voltage"]?.GetValue<string>(),
+            Voltage = input["voltage"]?.GetValue<string>(),
             ControlProtocol = input["control_protocol"]?.GetValue<string>(),
-            Application     = input["application"]?.GetValue<string>(),
-            Distribution    = input["distribution"]?.GetValue<string>(),
-            DynamicLight    = input["dynamic_light"]?.GetValue<string>(),
-            Compliance      = input["compliance"]?.GetValue<string>(),
-            AdaCompliant    = input["ada_compliant"]?.GetValue<bool?>(),
+            Application = input["application"]?.GetValue<string>(),
+            Distribution = input["distribution"]?.GetValue<string>(),
+            DynamicLight = input["dynamic_light"]?.GetValue<string>(),
+            Compliance = input["compliance"]?.GetValue<string>(),
+            AdaCompliant = input["ada_compliant"]?.GetValue<bool?>(),
             ExpressDelivery = input["express_delivery"]?.GetValue<bool?>(),
             // Hard cap at 3 — higher values cause 429s and bloat the SSE payload
             TopK = Math.Min(input["top_k"]?.GetValue<int>() ?? 3, 3)
