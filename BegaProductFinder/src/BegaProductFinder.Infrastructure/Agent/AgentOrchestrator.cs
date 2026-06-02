@@ -258,7 +258,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         {
             ["model"] = _model,
             ["max_tokens"] = _maxTokens,
-            ["temperature"] = 0.2,
+            ["temperature"] = 0,
             ["system"] = systemArray,
             ["stream"] = true,
             ["tools"] = new JsonArray(toolNodes),
