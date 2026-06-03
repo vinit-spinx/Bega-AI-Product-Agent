@@ -210,7 +210,7 @@ public static class AgentTools
         new JsonObject
         {
             ["query"]          = Prop("string",  "Natural language description including space context e.g. 'outdoor seating for a university campus plaza'", req: true),
-            ["furniture_type"] = Prop("string",  "bench|chair|table|planter|bike rack|litter bin|modular furniture|partition — omit to search all types"),
+            ["furniture_type"] = Prop("string", "bench|chair|table|table set|stake|cycle stand|planter|bike rack|waste management|litter bin|modular furniture|partition — omit to search all types"),
             ["material"]       = Prop("string",  "Finish or material e.g. 'steel', 'concrete', 'wood' — omit unless user specifies"),
             ["illuminated"]    = Prop("boolean", "true = furniture with integrated lighting only"),
             ["exclude_catalog_numbers"] = new JsonObject
