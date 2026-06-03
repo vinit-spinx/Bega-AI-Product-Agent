@@ -156,10 +156,21 @@ export type SseEvent =
 
 // ── Chat UI types ─────────────────────────────────────────────────────────────
 
+/** Attached image shown in the user bubble (data URL for preview only, never stored). */
+export interface ImageAttachment {
+  base64: string;
+  mimeType: string;
+  previewUrl: string;
+}
+
 export interface UiMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** Set on user messages that were sent with an image attachment. */
+  imagePreview?: string;
+  /** Set on assistant messages that were triggered by a vision query — holds the user's image preview URL so the response bubble can render the visual context + product overlay. */
+  contextImagePreview?: string;
   products?: ProductSearchResult[];
   furnitureItems?: FurnitureSearchResult[];
   projectAreas?: ProjectAreaRecommendation[];

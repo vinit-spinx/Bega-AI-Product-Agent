@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SseEvent, UiMessage } from '@/types';
+import type { ImageAttachment, SseEvent, UiMessage } from '@/types';
 
 const SESSION_KEY = 'bega_session_id';
 
@@ -15,12 +15,13 @@ function getOrCreateSessionId(): string {
   return id;
 }
 
-function newAssistantMessage(): UiMessage {
+function newAssistantMessage(contextImagePreview?: string): UiMessage {
   return {
     id: crypto.randomUUID(),
     role: 'assistant',
     content: '',
     isStreaming: true,
+    contextImagePreview,
   };
 }
 
@@ -28,7 +29,7 @@ export interface UseChatSessionReturn {
   messages: UiMessage[];
   sessionId: string;
   isLoading: boolean;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, image?: ImageAttachment) => Promise<void>;
   clearSession: () => void;
 }
 
@@ -142,28 +143,37 @@ export function useChatSession(): UseChatSessionReturn {
   );
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, image?: ImageAttachment) => {
       if (!text.trim() || isLoading) return;
 
       const userMsg: UiMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         content: text.trim(),
+        imagePreview: image?.previewUrl,
         isStreaming: false,
       };
-      const assistantMsg = newAssistantMessage();
+      // Pass the image preview to the assistant message so the response bubble
+      // can render the visual context + best-product overlay without extra API calls.
+      const assistantMsg = newAssistantMessage(image?.previewUrl);
 
       setMessages(prev => [...prev, userMsg, assistantMsg]);
       setIsLoading(true);
 
       try {
+        const body: Record<string, unknown> = {
+          sessionId: sessionIdRef.current,
+          message: text.trim(),
+        };
+        if (image) {
+          body.imageBase64 = image.base64;
+          body.imageMimeType = image.mimeType;
+        }
+
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: sessionIdRef.current,
-            message: text.trim(),
-          }),
+          body: JSON.stringify(body),
         });
 
         if (!response.ok || !response.body) {
@@ -205,7 +215,7 @@ export function useChatSession(): UseChatSessionReturn {
         setIsLoading(false);
       }
     },
-    [isLoading, handleSseEvent, updateLastAssistantMessage],
+    [isLoading, handleSseEvent, updateLastAssistantMessage], // image is a param, not state
   );
 
   const clearSession = useCallback(() => {

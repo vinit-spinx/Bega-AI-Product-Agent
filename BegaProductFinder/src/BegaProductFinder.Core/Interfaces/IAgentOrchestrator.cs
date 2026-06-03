@@ -23,5 +23,7 @@ public interface IAgentOrchestrator
     IAsyncEnumerable<AgentStreamChunk> StreamResponseAsync(
         string sessionId,
         string userMessage,
+        string? imageBase64 = null,
+        string? imageMimeType = null,
         CancellationToken ct = default);
 }

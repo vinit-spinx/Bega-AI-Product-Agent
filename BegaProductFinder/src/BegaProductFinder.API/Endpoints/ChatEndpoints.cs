@@ -52,7 +52,8 @@ public static class ChatEndpoints
         await response.StartAsync(ct);
 
         await foreach (var chunk in orchestrator.StreamResponseAsync(
-            request.SessionId, request.Message, ct))
+            request.SessionId, request.Message,
+            request.ImageBase64, request.ImageMimeType, ct))
         {
             var ssePayload = BuildSsePayload(chunk);
             if (ssePayload is null) continue;
@@ -134,5 +135,9 @@ public static class ChatEndpoints
 /// <summary>Request body for <c>POST /api/chat/message</c>.</summary>
 public sealed record ChatMessageRequest(
     string SessionId,
-    string Message
+    string Message,
+    /// <summary>Optional base64-encoded image for vision queries. Requires <see cref="ImageMimeType"/>.</summary>
+    string? ImageBase64 = null,
+    /// <summary>MIME type of the attached image e.g. <c>image/jpeg</c>, <c>image/png</c>.</summary>
+    string? ImageMimeType = null
 );

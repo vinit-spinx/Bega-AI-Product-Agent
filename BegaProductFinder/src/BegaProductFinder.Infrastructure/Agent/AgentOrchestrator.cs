@@ -87,11 +87,13 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     public async IAsyncEnumerable<AgentStreamChunk> StreamResponseAsync(
         string sessionId,
         string userMessage,
+        string? imageBase64 = null,
+        string? imageMimeType = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         Exception? caught = null;
 
-        await using var enumerator = RunAsync(sessionId, userMessage, ct).GetAsyncEnumerator(ct);
+        await using var enumerator = RunAsync(sessionId, userMessage, imageBase64, imageMimeType, ct).GetAsyncEnumerator(ct);
 
         while (true)
         {
@@ -124,6 +126,8 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private async IAsyncEnumerable<AgentStreamChunk> RunAsync(
         string sessionId,
         string userMessage,
+        string? imageBase64,
+        string? imageMimeType,
         [EnumeratorCancellation] CancellationToken ct)
     {
         // Keep only the 4 most recent history turns to limit context size
@@ -132,7 +136,10 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         var apiMessages = new List<JsonObject>();
         foreach (var msg in history)
             apiMessages.Add(TextMessage(msg.Role, msg.Content));
-        apiMessages.Add(TextMessage("user", userMessage));
+
+        // When an image is present, build a content-block array message (vision turn).
+        // Otherwise fall back to a plain text string (standard turn, no extra tokens).
+        apiMessages.Add(BuildUserMessage(userMessage, imageBase64, imageMimeType));
 
         var systemPrompt = _promptBuilder.Build();
         var tools = _toolDefinitions;
@@ -228,10 +235,15 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         if (parsedActions?.Count > 0)
             yield return new AgentStreamChunk { Type = AgentStreamEventType.SuggestedActions, SuggestedActions = parsedActions };
 
-        // Persist the user message and stripped assistant response to the session
+        // Persist the user message and stripped assistant response to the session.
+        // Base64 image data is never stored in history — only a short marker is kept so
+        // Claude's context window isn't inflated on subsequent turns.
         var session = await _sessionService.GetOrCreateAsync(sessionId, ct);
         var existingMessages = JsonSerializer.Deserialize<List<ChatMessage>>(session.MessagesJson, _jsonOptions) ?? [];
-        existingMessages.Add(new ChatMessage { Role = "user", Content = userMessage });
+        var userHistoryContent = imageBase64 is not null
+            ? $"[Image: {imageMimeType}] {userMessage}"
+            : userMessage;
+        existingMessages.Add(new ChatMessage { Role = "user", Content = userHistoryContent });
         if (!string.IsNullOrEmpty(textToSave))
             existingMessages.Add(new ChatMessage { Role = "assistant", Content = textToSave });
         session.MessagesJson = JsonSerializer.Serialize(existingMessages, _jsonOptions);
@@ -484,8 +496,8 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 .Select(n => n?.GetValue<string>() ?? string.Empty)
                 .Where(s => s.Length > 0)
                 .ToArray(),
-            // Hard cap at 3 — higher values cause 429s and bloat the SSE payload
-            TopK = Math.Min(input["top_k"]?.GetValue<int>() ?? 3, 3)
+            // Cap at 6 — vision queries request top_k=6; regular queries always pass top_k=3
+            TopK = Math.Min(input["top_k"]?.GetValue<int>() ?? 3, 6)
         };
 
         var results = await _productSearch.SearchByNaturalLanguageAsync(query, expandedQueries, filters, ct);
@@ -767,11 +779,48 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         return JsonSerializer.Serialize(summaries, _jsonOptions);
     }
 
+    /// <summary>
+    /// Builds a standard text-only message. Used for history reconstruction and assistant turns.
+    /// </summary>
     private static JsonObject TextMessage(string role, string content) => new()
     {
         ["role"] = role,
         ["content"] = content
     };
+
+    /// <summary>
+    /// Builds the current user message. When an image is attached, produces a content-block
+    /// array with an image block followed by the text block (Claude vision format).
+    /// When no image is present, returns a plain string content to minimise tokens.
+    /// </summary>
+    private static JsonObject BuildUserMessage(string text, string? imageBase64, string? imageMimeType)
+    {
+        if (imageBase64 is null || imageMimeType is null)
+            return TextMessage("user", text);
+
+        return new JsonObject
+        {
+            ["role"] = "user",
+            ["content"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["type"] = "image",
+                    ["source"] = new JsonObject
+                    {
+                        ["type"]       = "base64",
+                        ["media_type"] = imageMimeType,
+                        ["data"]       = imageBase64
+                    }
+                },
+                new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = text
+                }
+            }
+        };
+    }
 
     /// <summary>
     /// Maps a friendly alias to the canonical Anthropic model ID.
