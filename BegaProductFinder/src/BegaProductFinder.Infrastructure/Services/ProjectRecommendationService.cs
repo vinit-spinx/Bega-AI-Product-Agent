@@ -384,12 +384,12 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
             ? string.Join(", ", styleKeywords)
             : string.Empty;
 
-        decimal? perAreaBudget = budgetUsd.HasValue && resolvedAreas.Count > 0
-            ? budgetUsd.Value / resolvedAreas.Count
-            : null;
+        // budgetUsd is a per-product price ceiling (e.g. "under $700" = each product ≤ $700).
+        // It is NOT a total project budget — never divide it by area count.
+        decimal? maxProductPrice = budgetUsd;
 
         var tasks = resolvedAreas.Select(area =>
-            RecommendForAreaAsync(area, projectType, styleHint, category, perAreaBudget, ct));
+            RecommendForAreaAsync(area, projectType, styleHint, category, maxProductPrice, ct));
 
         var results = await Task.WhenAll(tasks);
         return [.. results];
@@ -402,74 +402,24 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
         string projectType,
         string styleHint,
         string? category,
-        decimal? perAreaBudget,
+        decimal? maxProductPrice,
         CancellationToken ct)
     {
-        // Use area-specific query hint so the vector search targets the right product type
         AreaQueryHints.TryGetValue(area, out var queryHint);
         AreaGroupPriority.TryGetValue(area, out var groupPriority);
-
-        var queryParts = new List<string>
-        {
-            queryHint ?? $"luminaire for {area}",
-            projectType
-        };
-        Console.WriteLine($"area:- {area}; queryHint:- {queryHint}; styleHint:- {styleHint}");
-        //if (!string.IsNullOrWhiteSpace(styleHint))
-        //    queryParts.Add(styleHint);
-
-        var query = string.Join(" ", queryParts);
-
-        // Try each group in priority order until we get results
+        var query = string.Join(" ", queryHint ?? $"luminaire for {area}", projectType);
         var candidates = groupPriority ?? [];
-        List<ProductSearchResult> products = [];
 
-        foreach (var group in candidates)
-        {
-            try
-            {
-                var filters = new ProductSearchFilters
-                {
-                    Category = category,
-                    Group = group,
-                    MinLumenOutput = 1,
-                    TopK = 3
-                };
-                products = await _productSearch.SearchByNaturalLanguageAsync(query, filters, ct);
-                if (products.Count > 0) break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Search failed for area '{Area}' group '{Group}'", area, group);
-            }
-        }
+        // First pass: search with budget ceiling enforced at SQL level
+        var products = await SearchAreaCandidatesAsync(query, candidates, category, maxProductPrice, ct);
 
-        // Final fallback: unfiltered search (no group constraint)
-        if (products.Count == 0)
+        // Second pass: if budget filter returned nothing, retry without it so the user
+        // always sees the nearest available options rather than a silent empty area card
+        var exceededBudget = false;
+        if (products.Count == 0 && maxProductPrice.HasValue)
         {
-            try
-            {
-                var fallback = new ProductSearchFilters
-                {
-                    Category = category,
-                    MinLumenOutput = 1,
-                    TopK = 3
-                };
-                products = await _productSearch.SearchByNaturalLanguageAsync(query, fallback, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Fallback search failed for area '{Area}' project '{Project}'", area, projectType);
-            }
-        }
-
-        if (perAreaBudget.HasValue && products.Count > 0)
-        {
-            var withinBudget = products
-                .Where(p => p.DnpPrice is null || p.DnpPrice <= perAreaBudget.Value)
-                .ToList();
-            if (withinBudget.Count > 0)
-                products = withinBudget;
+            products = await SearchAreaCandidatesAsync(query, candidates, category, null, ct);
+            exceededBudget = products.Count > 0;
         }
 
         var estimatedDnp = products
@@ -480,16 +430,68 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
         {
             AreaName = area,
             RecommendedProducts = products,
-            Rationale = BuildRationale(area, projectType, products, perAreaBudget),
+            Rationale = BuildRationale(area, projectType, products, maxProductPrice, exceededBudget),
             EstimatedTotalDnp = estimatedDnp
         };
+    }
+
+    /// <summary>
+    /// Tries each area group in priority order, then falls back to an unfiltered search.
+    /// The <paramref name="maxDnpPrice"/> ceiling is passed to SQL so only in-budget rows are returned.
+    /// </summary>
+    private async Task<List<ProductSearchResult>> SearchAreaCandidatesAsync(
+        string query,
+        string[] groupPriority,
+        string? category,
+        decimal? maxDnpPrice,
+        CancellationToken ct)
+    {
+        foreach (var group in groupPriority)
+        {
+            try
+            {
+                var filters = new ProductSearchFilters
+                {
+                    Category = category,
+                    Group = group,
+                    MinLumenOutput = 1,
+                    MaxDnpPrice = maxDnpPrice,
+                    TopK = 3
+                };
+                var r = await _productSearch.SearchByNaturalLanguageAsync(query, filters, ct);
+                if (r.Count > 0) return r;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Search failed for group '{Group}' query '{Query}'", group, query);
+            }
+        }
+
+        // No group matched — try without group constraint
+        try
+        {
+            var fallback = new ProductSearchFilters
+            {
+                Category = category,
+                MinLumenOutput = 1,
+                MaxDnpPrice = maxDnpPrice,
+                TopK = 3
+            };
+            return await _productSearch.SearchByNaturalLanguageAsync(query, fallback, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unfiltered fallback failed for query '{Query}'", query);
+            return [];
+        }
     }
 
     private static string BuildRationale(
         string area,
         string projectType,
         List<ProductSearchResult> products,
-        decimal? perAreaBudget)
+        decimal? maxProductPrice,
+        bool exceededBudget)
     {
         if (products.Count == 0)
             return $"No suitable BEGA products were found for the {area} area. Consider reviewing the catalog filters or expanding the search criteria.";
@@ -505,9 +507,8 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
 
         rationale += ".";
 
-        if (perAreaBudget.HasValue &&
-            products.Any(p => p.DnpPrice.HasValue && p.DnpPrice > perAreaBudget.Value))
-            rationale += $" Note: some options exceed the per-area budget of ${perAreaBudget:0.00}.";
+        if (exceededBudget && maxProductPrice.HasValue)
+            rationale += $" No products were found under ${maxProductPrice:0} for this area — nearest available options are shown. Consider relaxing the budget or choosing a different product type.";
 
         return rationale;
     }

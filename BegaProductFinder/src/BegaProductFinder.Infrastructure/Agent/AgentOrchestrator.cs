@@ -460,6 +460,12 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             Compliance = input["compliance"]?.GetValue<string>(),
             AdaCompliant = input["ada_compliant"]?.GetValue<bool?>(),
             ExpressDelivery = input["express_delivery"]?.GetValue<bool?>(),
+            MinDnpPrice = TryGetDecimal(input["min_dnp_price"]),
+            MaxDnpPrice = TryGetDecimal(input["max_dnp_price"]),
+            ExcludedCatalogNumbers = input["exclude_catalog_numbers"]?.AsArray()
+                .Select(n => n?.GetValue<string>() ?? string.Empty)
+                .Where(s => s.Length > 0)
+                .ToArray(),
             // Hard cap at 3 — higher values cause 429s and bloat the SSE payload
             TopK = Math.Min(input["top_k"]?.GetValue<int>() ?? 3, 3)
         };
@@ -650,12 +656,19 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     {
         var query = input["query"]?.GetValue<string>() ?? string.Empty;
         var furnitureType = input["furniture_type"]?.GetValue<string>();
-        var application = input["application"]?.GetValue<string>();
         var material = input["material"]?.GetValue<string>();
         var illuminated = input["illuminated"]?.GetValue<bool?>();
         var topK = input["top_k"]?.GetValue<int>() ?? 5;
 
-        var results = await _furnitureSearch.SearchAsync(query, furnitureType, application, material, illuminated, topK, ct);
+        // application is intentionally not read — the DB Application column holds luminaire-specific
+        // values (Accent/Facade/Pathway) that do not match space descriptions like "public plaza".
+        // Space context travels through query for semantic vector matching.
+        var excludedCatalogNumbers = input["exclude_catalog_numbers"]?.AsArray()
+            .Select(n => n?.GetValue<string>() ?? string.Empty)
+            .Where(s => s.Length > 0)
+            .ToArray();
+
+        var results = await _furnitureSearch.SearchAsync(query, furnitureType, null, material, illuminated, topK, excludedCatalogNumbers, ct);
         var json = JsonSerializer.Serialize(results, _jsonOptions);
         var sseChunk = results.Count > 0
             ? new AgentStreamChunk { Type = AgentStreamEventType.Furniture, FurnitureItems = results }

@@ -88,6 +88,21 @@ public record ProductSearchFilters
     /// <summary>Compliance substring match against SocialEnviornmentalHealth column (LIKE %value%).</summary>
     public string? Compliance { get; init; }
 
+    // ── Price range ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Minimum DNP price per product (inclusive). Filters "above $X" / "higher than $X" queries.
+    /// Products with null DnpPrice are excluded when this filter is active.
+    /// </summary>
+    public decimal? MinDnpPrice { get; init; }
+
+    /// <summary>
+    /// Maximum DNP price per product (inclusive). Filters "under $X" / "below $X" queries
+    /// and is used as the per-product ceiling when budget_usd is passed to recommend_for_project.
+    /// Products with null DnpPrice are excluded when this filter is active.
+    /// </summary>
+    public decimal? MaxDnpPrice { get; init; }
+
     // ── Boolean flags ─────────────────────────────────────────────────────────
 
     /// <summary>Filter to ADA-compliant products only (IsAdaCompliant = 1).</summary>
@@ -95,6 +110,12 @@ public record ProductSearchFilters
 
     /// <summary>Filter to EXPRESS / quick-ship products only (IsExpressDelivery = 1).</summary>
     public bool? ExpressDelivery { get; init; }
+
+    /// <summary>
+    /// Catalog numbers already shown to the user in previous turns.
+    /// Excluded from results so "show more" returns genuinely new products.
+    /// </summary>
+    public string[]? ExcludedCatalogNumbers { get; init; }
 
     /// <summary>Maximum results to return. Hard-capped at 3 in the orchestrator.</summary>
     public int TopK { get; init; } = 3;

@@ -68,9 +68,23 @@ public static class AgentTools
             // DB column: SocialEnviornmentalHealth
             // Exact values: "International Dark Sky" · "Wildlife Friendly" · "EPD Available" · "FSC certified wood"
             ["compliance"] = Prop("string", "Compliance: 'International Dark Sky' | 'Wildlife Friendly' | 'EPD Available' | 'FSC certified wood'"),
+            // ── Price range ─────────────────────────────────────────────────────
+            // Use when a semantic query also has a price constraint.
+            // "under $500" → max_dnp_price=500  |  "above $300" → min_dnp_price=300
+            // "between $200–$600" → min=200, max=600  |  "exactly $700" → min=700, max=700
+            // Products with no DNP price on file are excluded when either field is set.
+            ["min_dnp_price"] = Prop("number", "Minimum DNP price USD — 'above $X' | 'more than $X' | 'higher than $X'"),
+            ["max_dnp_price"] = Prop("number", "Maximum DNP price USD — 'under $X' | 'below $X' | 'less than $X' | 'max $X'"),
             // ── Boolean flags ───────────────────────────────────────────────
             ["ada_compliant"]    = Prop("boolean", "ADA compliant products only"),
             ["express_delivery"] = Prop("boolean", "EXPRESS / quick-ship products only (lead time: one week)"),
+            // ── Pagination / deduplication ──────────────────────────────────
+            ["exclude_catalog_numbers"] = new JsonObject
+            {
+                ["type"]        = "array",
+                ["description"] = "Catalog numbers already shown to the user — pass all previously returned catalog numbers to get a genuinely new page of results.",
+                ["items"]       = new JsonObject { ["type"] = "string" }
+            },
             ["top_k"]            = Prop("integer", "Max results — always pass 3")
         },
         ["query"]);
@@ -190,14 +204,22 @@ public static class AgentTools
 
     private static JsonObject SearchFurniture() => Tool(
         "search_furniture",
-        "Search BEGA outdoor furniture: benches, planters, bollards, litter bins, modular furniture, cycle stands.",
+        "Search BEGA outdoor furniture: benches, chairs, tables, planters, bike racks, litter bins, modular furniture. " +
+        "Always include the space/location context in query (e.g. 'outdoor benches for a public plaza'). " +
+        "Use furniture_type only to filter by a specific furniture category. Never pass a space name as application.",
         new JsonObject
         {
-            ["query"]          = Prop("string",  "e.g. 'outdoor benches for a waterfront plaza'", req: true),
-            ["furniture_type"] = Prop("string",  "bench|bollard|planter|modular seating|litter bin|cycle stand"),
-            ["application"]    = Prop("string",  "e.g. 'public plaza', 'campus', 'waterfront'"),
-            ["illuminated"]    = Prop("boolean", "Furniture with integrated lighting only"),
-            ["top_k"]          = Prop("integer", "Max results (default 5)")
+            ["query"]          = Prop("string",  "Natural language description including space context e.g. 'outdoor seating for a university campus plaza'", req: true),
+            ["furniture_type"] = Prop("string",  "bench|chair|table|planter|bike rack|litter bin|modular furniture|partition — omit to search all types"),
+            ["material"]       = Prop("string",  "Finish or material e.g. 'steel', 'concrete', 'wood' — omit unless user specifies"),
+            ["illuminated"]    = Prop("boolean", "true = furniture with integrated lighting only"),
+            ["exclude_catalog_numbers"] = new JsonObject
+            {
+                ["type"]        = "array",
+                ["description"] = "Catalog numbers already shown to the user — pass all previously returned catalog numbers to get a genuinely new page of results.",
+                ["items"]       = new JsonObject { ["type"] = "string" }
+            },
+            ["top_k"]          = Prop("integer", "Max results — always pass 3")
         },
         ["query"]);
 

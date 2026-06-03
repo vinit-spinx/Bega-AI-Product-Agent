@@ -61,7 +61,10 @@ public sealed class ProductSearchService : IProductSearchService
     {
         filters ??= new ProductSearchFilters();
         var topK = Math.Max(filters.TopK, 6);
-        var candidateK = Math.Max(topK * 8, 80);
+        var exclusionCount = filters.ExcludedCatalogNumbers?.Length ?? 0;
+        // Widen the vector candidate pool proportionally when items are excluded,
+        // so SQL still has enough rows to return topK non-excluded results.
+        var candidateK = Math.Max(topK * 8, 80) + exclusionCount * topK;
 
         // Build full query list: primary + expanded (capped at 4 expanded to control latency)
         var allQueries = new List<string>(1 + Math.Min(expandedQueries.Count, 4)) { query };
@@ -451,6 +454,22 @@ public sealed class ProductSearchService : IProductSearchService
             conditions.Add("p.IsAdaCompliant = 1");
         if (filters.ExpressDelivery == true)
             conditions.Add("p.IsExpressDelivery = 1");
+        if (filters.MinDnpPrice.HasValue)
+        {
+            conditions.Add("p.DnpPrice IS NOT NULL AND p.DnpPrice >= @MinDnpPrice");
+            parameters.Add("MinDnpPrice", filters.MinDnpPrice.Value);
+        }
+        if (filters.MaxDnpPrice.HasValue)
+        {
+            // Null-priced products are excluded — their actual price is unknown
+            conditions.Add("p.DnpPrice IS NOT NULL AND p.DnpPrice <= @MaxDnpPrice");
+            parameters.Add("MaxDnpPrice", filters.MaxDnpPrice.Value);
+        }
+        if (filters.ExcludedCatalogNumbers is { Length: > 0 })
+        {
+            conditions.Add("p.CatalogNumber NOT IN @ExcludedCatalogNumbers");
+            parameters.Add("ExcludedCatalogNumbers", filters.ExcludedCatalogNumbers);
+        }
 
         var sql = $"""
             SELECT
@@ -574,6 +593,21 @@ public sealed class ProductSearchService : IProductSearchService
             structuredConditions.Add("IsAdaCompliant = 1");
         if (filters.ExpressDelivery == true)
             structuredConditions.Add("IsExpressDelivery = 1");
+        if (filters.MinDnpPrice.HasValue)
+        {
+            structuredConditions.Add("DnpPrice IS NOT NULL AND DnpPrice >= @MinDnpPrice");
+            structuredParams.Add("MinDnpPrice", filters.MinDnpPrice.Value);
+        }
+        if (filters.MaxDnpPrice.HasValue)
+        {
+            structuredConditions.Add("DnpPrice IS NOT NULL AND DnpPrice <= @MaxDnpPrice");
+            structuredParams.Add("MaxDnpPrice", filters.MaxDnpPrice.Value);
+        }
+        if (filters.ExcludedCatalogNumbers is { Length: > 0 })
+        {
+            structuredConditions.Add("CatalogNumber NOT IN @ExcludedCatalogNumbers");
+            structuredParams.Add("ExcludedCatalogNumbers", filters.ExcludedCatalogNumbers);
+        }
 
         var structuredClause = structuredConditions.Count > 0
             ? "AND " + string.Join(" AND ", structuredConditions)
@@ -648,6 +682,13 @@ public sealed class ProductSearchService : IProductSearchService
         for (int i = 0; i < words2.Count; i++)
             broadParams.Add($"b{i}", $"%{words2[i]}%");
 
+        var broadExclusionClause = string.Empty;
+        if (filters.ExcludedCatalogNumbers is { Length: > 0 })
+        {
+            broadExclusionClause = "AND CatalogNumber NOT IN @ExcludedCatalogNumbers";
+            broadParams.Add("ExcludedCatalogNumbers", filters.ExcludedCatalogNumbers);
+        }
+
         var broadSql = $"""
             SELECT TOP (@TopK)
                 ProductId, CatalogNumber, FamilyName, FamilySlug, SubFamilyName,
@@ -664,6 +705,7 @@ public sealed class ProductSearchService : IProductSearchService
             FROM Products
             WHERE ({string.Join(" OR ", broadConditions)})
               AND (GroupSlug NOT IN @FurnitureSlugs OR GroupSlug IS NULL)
+              {broadExclusionClause}
             ORDER BY CatalogNumber
             """;
 

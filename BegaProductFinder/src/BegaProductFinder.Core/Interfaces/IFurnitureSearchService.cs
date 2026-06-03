@@ -27,5 +27,6 @@ public interface IFurnitureSearchService
         string? material = null,
         bool? illuminated = null,
         int topK = 5,
+        string[]? excludedCatalogNumbers = null,
         CancellationToken ct = default);
 }

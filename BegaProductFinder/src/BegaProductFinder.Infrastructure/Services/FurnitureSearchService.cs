@@ -19,11 +19,15 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
     private readonly string _connectionString;
     private readonly ILogger<FurnitureSearchService> _logger;
 
-    // Furniture group slugs per specsMapping.json
+    // Furniture group slugs per specsMapping.json — keep in sync with furniture_group_slugs there
     private static readonly string[] FurnitureGroupSlugs =
     [
+        // original slugs
         "bench", "seating", "litter-bin", "planter", "bollard-furniture",
-        "modular-furniture", "urban-elements", "cycle-stand"
+        "modular-furniture", "urban-elements", "cycle-stand",
+        // added groups
+        "table-set", "table", "chair", "waste-management",
+        "bike-rack", "stake", "partition", "accessories"
     ];
 
     public FurnitureSearchService(
@@ -47,26 +51,49 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         string? material = null,
         bool? illuminated = null,
         int topK = 5,
+        string[]? excludedCatalogNumbers = null,
         CancellationToken ct = default)
     {
-        // Embed the query and run vector search to get candidate product IDs
-        int[] candidateIds = [];
+        // Step 1: Fetch all furniture product IDs from SQL, scoped to known furniture GroupSlugs.
+        // This prevents vector search from returning luminaire products that then fail the GroupSlug filter.
+        int[] furnitureProductIds = [];
         try
         {
-            var queryVector = await _embedding.EmbedAsync(query, ct);
-            var hits = await _vectorSearch.SearchAsync(queryVector, topK: topK * 4, ct: ct);
-            candidateIds = hits.Select(h => h.ProductId).Distinct().ToArray();
+            await using var idConn = new SqlConnection(_connectionString);
+            var idResults = await idConn.QueryAsync<int>(
+                "SELECT ProductId FROM Products WHERE GroupSlug IN @FurnitureSlugs",
+                new { FurnitureSlugs = FurnitureGroupSlugs });
+            furnitureProductIds = idResults.ToArray();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Vector search failed for furniture query — using SQL fallback");
+            _logger.LogWarning(ex, "Failed to fetch furniture product IDs for vector scoping");
         }
 
-        // Build SQL query scoped to furniture group slugs
-        var conditions = new List<string>
+        // Step 2: Vector search restricted to furniture product IDs only.
+        // If application context is provided, append it to improve semantic matching
+        // (application values in the DB are luminaire-specific e.g. "Accent/Facade/Pathway"
+        // and do not represent space descriptions like "public plaza").
+        var enrichedQuery = application is not null ? $"{query} {application}" : query;
+        int[] candidateIds = [];
+        if (furnitureProductIds.Length > 0)
         {
-            "GroupSlug IN @FurnitureSlugs"
-        };
+            try
+            {
+                var queryVector = await _embedding.EmbedAsync(enrichedQuery, ct);
+                var hits = await _vectorSearch.SearchAsync(
+                    queryVector, topK: topK * 4,
+                    filterProductIds: furnitureProductIds, ct: ct);
+                candidateIds = hits.Select(h => h.ProductId).Distinct().ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Vector search failed for furniture query — using SQL fallback");
+            }
+        }
+
+        // Step 3: Build SQL query scoped to furniture group slugs
+        var conditions = new List<string> { "GroupSlug IN @FurnitureSlugs" };
         var parameters = new DynamicParameters();
         parameters.Add("FurnitureSlugs", FurnitureGroupSlugs);
         parameters.Add("TopK", topK);
@@ -76,23 +103,19 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
             conditions.Add("ProductId IN @CandidateIds");
             parameters.Add("CandidateIds", candidateIds);
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(query))
         {
-            // Fallback: keyword match on family/extra info
-            conditions.Add("(FamilyName LIKE @Query OR ExtraInfo LIKE @Query)");
+            // SQL keyword fallback scoped to furniture products — search name and description only
+            conditions.Add("(FamilyName LIKE @Query OR SubFamilyName LIKE @Query OR ExtraInfo LIKE @Query)");
             parameters.Add("Query", $"%{query}%");
         }
+        // When neither vector nor keyword matched, the GroupSlug condition alone still returns
+        // all furniture products so the user sees something relevant.
 
         if (furnitureType is not null)
         {
             conditions.Add("GroupsName LIKE @FurnitureType");
             parameters.Add("FurnitureType", $"%{furnitureType}%");
-        }
-
-        if (application is not null)
-        {
-            conditions.Add("(Application LIKE @Application OR ExtraInfo LIKE @Application)");
-            parameters.Add("Application", $"%{application}%");
         }
 
         if (material is not null)
@@ -109,6 +132,12 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         else if (illuminated == false)
         {
             conditions.Add("(WattageW IS NULL OR WattageW = 0)");
+        }
+
+        if (excludedCatalogNumbers is { Length: > 0 })
+        {
+            conditions.Add("CatalogNumber NOT IN @ExcludedCatalogNumbers");
+            parameters.Add("ExcludedCatalogNumbers", excludedCatalogNumbers);
         }
 
         var sql = $"""
