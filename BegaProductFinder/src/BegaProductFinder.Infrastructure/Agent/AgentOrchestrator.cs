@@ -78,7 +78,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
         _apiKey = config["Anthropic:ApiKey"]
             ?? throw new InvalidOperationException("Anthropic:ApiKey is required.");
-        _model = config["Anthropic:Model"] ?? "claude-sonnet-4-20250514";
+        _model = ResolveModel(config["Anthropic:Model"]);
         _maxTokens = config.GetValue<int>("Anthropic:MaxTokens", 2048);
         _maxToolIterations = config.GetValue<int>("Anthropic:MaxToolIterations", 5);
     }
@@ -772,6 +772,20 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         ["role"] = role,
         ["content"] = content
     };
+
+    /// <summary>
+    /// Maps a friendly alias to the canonical Anthropic model ID.
+    /// Full model IDs (starting with "claude-") are passed through unchanged
+    /// so existing appsettings values continue to work without modification.
+    /// </summary>
+    private static string ResolveModel(string modelConfig) =>
+        modelConfig.ToLowerInvariant() switch
+        {
+            "haiku"  => "claude-haiku-4-5-20251001",
+            "sonnet" => "claude-sonnet-4-20250514",
+            "opus"   => "claude-opus-4-8",
+            _        => modelConfig  // full model ID passed through as-is Old One claude-sonnet-4-20250514
+        };
 
     private static decimal? TryGetDecimal(JsonNode? node)
     {
