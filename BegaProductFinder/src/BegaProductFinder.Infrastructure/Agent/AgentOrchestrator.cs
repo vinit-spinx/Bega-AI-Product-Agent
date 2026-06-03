@@ -43,6 +43,13 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         WriteIndented = false
     };
 
+    // Built once at startup — schemas never change at runtime, cloning per-request is enough
+    private static readonly JsonObject[] _toolDefinitions = AgentTools.GetDefinitions();
+
+    private static readonly System.Text.RegularExpressions.Regex _suggestedActionsRegex = new(
+        @"<suggested_actions>\s*(\[[\s\S]*?\])\s*</suggested_actions>",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public AgentOrchestrator(
         IHttpClientFactory httpFactory,
         IChatSessionService sessionService,
@@ -128,7 +135,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         apiMessages.Add(TextMessage("user", userMessage));
 
         var systemPrompt = _promptBuilder.Build();
-        var tools = AgentTools.GetDefinitions();
+        var tools = _toolDefinitions;
 
         string finalAssistantText = string.Empty;
 
@@ -156,10 +163,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             finalAssistantText = assistantText;
 
             if (toolCalls.Count == 0 || stopReason is "max_tokens" or "stop_sequence")
-            {
-                finalAssistantText = assistantText;
                 break;
-            }
 
             // Build assistant message containing text + tool use blocks
             var assistantContent = new JsonArray();
@@ -177,32 +181,29 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
             apiMessages.Add(new JsonObject { ["role"] = "assistant", ["content"] = assistantContent });
 
-            // Execute tool calls — skip exact duplicates to avoid redundant API/DB round-trips
+            // Dispatch tool calls in parallel — deduplication check happens before Task.WhenAll
             var toolResultsArray = new JsonArray();
-            Console.WriteLine("toolCalls:- " + toolCalls.Count);
-            foreach (var tc in toolCalls)
+            var dispatchTasks = toolCalls
+                .Select(tc =>
+                {
+                    var key = $"{tc.Name}::{tc.Input.ToJsonString()}";
+                    return dispatchedToolKeys.Add(key)
+                        ? DispatchToolAsync(tc, ct)
+                        : Task.FromResult(("{\"note\":\"duplicate call skipped\"}", (AgentStreamChunk?)null));
+                })
+                .ToArray();
+
+            var dispatchResults = await Task.WhenAll(dispatchTasks);
+
+            // Emit SSE chunks and build the tool-result array sequentially (safe for yield)
+            for (int i = 0; i < toolCalls.Count; i++)
             {
-                var dedupeKey = $"{tc.Name}::{tc.Input.ToJsonString()}";
-                string resultJson;
-                AgentStreamChunk? sseChunk;
-
-                if (dispatchedToolKeys.Contains(dedupeKey))
-                {
-                    _logger.LogDebug("Skipping duplicate tool call '{Name}'", tc.Name);
-                    resultJson = "{\"note\":\"duplicate call skipped\"}";
-                    sseChunk = null;
-                }
-                else
-                {
-                    dispatchedToolKeys.Add(dedupeKey);
-                    (resultJson, sseChunk) = await DispatchToolAsync(tc, ct);
-                    if (sseChunk is not null) yield return sseChunk;
-                }
-
+                var (resultJson, sseChunk) = dispatchResults[i];
+                if (sseChunk is not null) yield return sseChunk;
                 toolResultsArray.Add(new JsonObject
                 {
                     ["type"] = "tool_result",
-                    ["tool_use_id"] = tc.Id,
+                    ["tool_use_id"] = toolCalls[i].Id,
                     ["content"] = resultJson
                 });
             }
@@ -210,12 +211,29 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             apiMessages.Add(new JsonObject { ["role"] = "user", ["content"] = toolResultsArray });
         }
 
-        // Persist the user message and final assistant response to the session
+        // Parse <suggested_actions> out of the final response text before saving to history.
+        // The raw tag is streamed to the frontend as text_delta (frontend renders it as pills),
+        // but keeping it in session history adds ~50-100 tokens of XML noise to every future turn.
+        var textToSave = finalAssistantText;
+        List<string>? parsedActions = null;
+        var saMatch = _suggestedActionsRegex.Match(finalAssistantText);
+        if (saMatch.Success)
+        {
+            textToSave = finalAssistantText.Replace(saMatch.Value, string.Empty).Trim();
+            try { parsedActions = JsonSerializer.Deserialize<List<string>>(saMatch.Groups[1].Value, _jsonOptions); }
+            catch { /* malformed JSON inside tag — tag still stripped from history */ }
+        }
+
+        // yield must be outside try/catch (CS1626)
+        if (parsedActions?.Count > 0)
+            yield return new AgentStreamChunk { Type = AgentStreamEventType.SuggestedActions, SuggestedActions = parsedActions };
+
+        // Persist the user message and stripped assistant response to the session
         var session = await _sessionService.GetOrCreateAsync(sessionId, ct);
         var existingMessages = JsonSerializer.Deserialize<List<ChatMessage>>(session.MessagesJson, _jsonOptions) ?? [];
         existingMessages.Add(new ChatMessage { Role = "user", Content = userMessage });
-        if (!string.IsNullOrEmpty(finalAssistantText))
-            existingMessages.Add(new ChatMessage { Role = "assistant", Content = finalAssistantText });
+        if (!string.IsNullOrEmpty(textToSave))
+            existingMessages.Add(new ChatMessage { Role = "assistant", Content = textToSave });
         session.MessagesJson = JsonSerializer.Serialize(existingMessages, _jsonOptions);
         session.LastActivityAt = DateTime.UtcNow;
         await _sessionService.SaveAsync(session, ct);
@@ -471,6 +489,18 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         };
 
         var results = await _productSearch.SearchByNaturalLanguageAsync(query, expandedQueries, filters, ct);
+
+        // Zero-trust post-filter: enforce CCT and control_protocol in memory as a safety net
+        // in case the SQL filter missed a row (e.g. partial JSON match on ColorTemperatureJson).
+        if (filters.ColorTemperatureK.HasValue)
+            results = results
+                .Where(r => r.ColorTemperatureJson?.Contains(filters.ColorTemperatureK.Value.ToString()) == true)
+                .ToList();
+        if (filters.ControlProtocol is not null)
+            results = results
+                .Where(r => r.ControlProtocol?.Contains(filters.ControlProtocol, StringComparison.OrdinalIgnoreCase) == true)
+                .ToList();
+
         // Compact JSON for Claude's context — full data goes to the frontend via sseChunk
         var json = results.Count > 0 ? CompactProductsJson(results) : "{\"results\":[]}";
         var sseChunk = results.Count > 0
@@ -551,7 +581,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         }
 
         var results = await _productSearch.FilterBySpecsAsync(filters, ct);
-        var json = JsonSerializer.Serialize(results, _jsonOptions);
+        var json = results.Count > 0 ? CompactProductsJson(results) : "{\"results\":[]}";
         var sseChunk = results.Count > 0
             ? new AgentStreamChunk { Type = AgentStreamEventType.Products, Products = results }
             : null;
@@ -647,7 +677,16 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
         var projectName = input["project_name"]?.GetValue<string>();
         var report = await _bom.GenerateAsync(items, projectName, ct);
-        var json = JsonSerializer.Serialize(report, _jsonOptions);
+        // Full report goes to the frontend via SSE; Claude only needs totals and missing items
+        var claudeContext = new
+        {
+            report.SubtotalDnp,
+            report.SubtotalMsrp,
+            report.Currency,
+            report.ItemCount,
+            report.NotFoundItems
+        };
+        var json = JsonSerializer.Serialize(claudeContext, _jsonOptions);
         var sseChunk = new AgentStreamChunk { Type = AgentStreamEventType.Bom, BomReport = report };
         return (json, sseChunk);
     }
@@ -669,7 +708,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             .ToArray();
 
         var results = await _furnitureSearch.SearchAsync(query, furnitureType, null, material, illuminated, topK, excludedCatalogNumbers, ct);
-        var json = JsonSerializer.Serialize(results, _jsonOptions);
+        var json = results.Count > 0 ? CompactFurnitureJson(results) : "{\"results\":[]}";
         var sseChunk = results.Count > 0
             ? new AgentStreamChunk { Type = AgentStreamEventType.Furniture, FurnitureItems = results }
             : null;
@@ -703,6 +742,27 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             p.DnpPrice,
             p.IsAdaCompliant,
             p.MatchScore
+        });
+        return JsonSerializer.Serialize(summaries, _jsonOptions);
+    }
+
+    /// <summary>
+    /// Compact summary of furniture results for Claude's tool-result context.
+    /// Excludes image URLs, dimension fractions, and document URLs — ~70% fewer tokens than full serialisation.
+    /// Full data is still emitted via the SSE chunk to the frontend.
+    /// </summary>
+    private static string CompactFurnitureJson(List<FurnitureSearchResult> items)
+    {
+        var summaries = items.Select(f => new
+        {
+            f.CatalogNumber,
+            f.FamilyName,
+            f.SubFamilyName,
+            f.GroupsName,
+            f.CategoryName,
+            f.Application,
+            f.Finish,
+            f.LeadTime
         });
         return JsonSerializer.Serialize(summaries, _jsonOptions);
     }

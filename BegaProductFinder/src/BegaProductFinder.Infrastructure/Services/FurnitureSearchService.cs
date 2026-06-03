@@ -8,14 +8,14 @@ using Microsoft.Extensions.Logging;
 namespace BegaProductFinder.Infrastructure.Services;
 
 /// <summary>
-/// Searches the BEGA outdoor furniture and urban design catalog.
+/// Searches the BEGA outdoor furniture and urban design catalog using pure SQL.
 /// Furniture products share the Products table with luminaires but are identified by their
-/// <c>GroupSlug</c> values. Uses hybrid vector + SQL search restricted to furniture group slugs.
+/// <c>GroupSlug</c> values. The furniture set is small enough (~50–200 products) that
+/// multi-word keyword search across key text columns is accurate without vector search.
+/// This service has no dependency on the embedding service or vector store.
 /// </summary>
 public sealed class FurnitureSearchService : IFurnitureSearchService
 {
-    private readonly IEmbeddingService _embedding;
-    private readonly IVectorSearchService _vectorSearch;
     private readonly string _connectionString;
     private readonly ILogger<FurnitureSearchService> _logger;
 
@@ -30,14 +30,20 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         "bike-rack", "stake", "partition", "accessories"
     ];
 
+    // Common stopwords excluded from keyword splitting to avoid noisy LIKE conditions
+    private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "for", "the", "and", "with", "from", "that", "this", "are", "was", "has",
+        "have", "had", "not", "but", "all", "can", "may", "will", "would", "could",
+        "should", "its", "our", "your", "their", "there", "here", "how", "what",
+        "when", "where", "who", "why", "into", "onto", "upon", "over", "under",
+        "between", "among", "through", "about", "around", "during", "before", "after"
+    };
+
     public FurnitureSearchService(
-        IEmbeddingService embedding,
-        IVectorSearchService vectorSearch,
         IConfiguration config,
         ILogger<FurnitureSearchService> logger)
     {
-        _embedding = embedding;
-        _vectorSearch = vectorSearch;
         _connectionString = config.GetConnectionString("SqlServer")
             ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
         _logger = logger;
@@ -54,63 +60,68 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         string[]? excludedCatalogNumbers = null,
         CancellationToken ct = default)
     {
-        // Step 1: Fetch all furniture product IDs from SQL, scoped to known furniture GroupSlugs.
-        // This prevents vector search from returning luminaire products that then fail the GroupSlug filter.
-        int[] furnitureProductIds = [];
-        try
+        // Split the combined query + application context into meaningful keywords.
+        // application is appended for richer matching (e.g. "plaza" surfaces relevant products)
+        // even though it is not a DB filter column for furniture.
+        var combined = application is not null ? $"{query} {application}" : query;
+        var words = combined
+            .Split([' ', '-', ',', '.', '/', '\\', '(', ')', '?', '!'],
+                   StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 3 && !StopWords.Contains(w))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToList();
+
+        var results = await RunQueryAsync(query, words, furnitureType, material,
+                                          illuminated, excludedCatalogNumbers, topK, ct);
+
+        // If keyword search produced nothing, retry with structural filters only
+        // so the user always sees relevant furniture rather than an empty card.
+        if (results.Count == 0 && words.Count > 0)
         {
-            await using var idConn = new SqlConnection(_connectionString);
-            var idResults = await idConn.QueryAsync<int>(
-                "SELECT ProductId FROM Products WHERE GroupSlug IN @FurnitureSlugs",
-                new { FurnitureSlugs = FurnitureGroupSlugs });
-            furnitureProductIds = idResults.ToArray();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to fetch furniture product IDs for vector scoping");
+            _logger.LogDebug(
+                "Furniture keyword search returned 0 for '{Query}' — retrying without keyword filter", query);
+            results = await RunQueryAsync(string.Empty, [], furnitureType, material,
+                                          illuminated, excludedCatalogNumbers, topK, ct);
         }
 
-        // Step 2: Vector search restricted to furniture product IDs only.
-        // If application context is provided, append it to improve semantic matching
-        // (application values in the DB are luminaire-specific e.g. "Accent/Facade/Pathway"
-        // and do not represent space descriptions like "public plaza").
-        var enrichedQuery = application is not null ? $"{query} {application}" : query;
-        int[] candidateIds = [];
-        if (furnitureProductIds.Length > 0)
-        {
-            try
-            {
-                var queryVector = await _embedding.EmbedAsync(enrichedQuery, ct);
-                var hits = await _vectorSearch.SearchAsync(
-                    queryVector, topK: topK * 4,
-                    filterProductIds: furnitureProductIds, ct: ct);
-                candidateIds = hits.Select(h => h.ProductId).Distinct().ToArray();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Vector search failed for furniture query — using SQL fallback");
-            }
-        }
+        return results;
+    }
 
-        // Step 3: Build SQL query scoped to furniture group slugs
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private async Task<List<FurnitureSearchResult>> RunQueryAsync(
+        string query,
+        List<string> words,
+        string? furnitureType,
+        string? material,
+        bool? illuminated,
+        string[]? excludedCatalogNumbers,
+        int topK,
+        CancellationToken ct)
+    {
         var conditions = new List<string> { "GroupSlug IN @FurnitureSlugs" };
         var parameters = new DynamicParameters();
         parameters.Add("FurnitureSlugs", FurnitureGroupSlugs);
         parameters.Add("TopK", topK);
 
-        if (candidateIds.Length > 0)
+        if (words.Count > 0)
         {
-            conditions.Add("ProductId IN @CandidateIds");
-            parameters.Add("CandidateIds", candidateIds);
+            // Each word is searched across all descriptive columns (OR within word, AND across words)
+            var wordConditions = words
+                .Select((_, i) =>
+                    $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} " +
+                    $"OR GroupsName LIKE @w{i} OR ExtraInfo LIKE @w{i})")
+                .ToList();
+            conditions.Add($"({string.Join(" OR ", wordConditions)})");
+            for (int i = 0; i < words.Count; i++)
+                parameters.Add($"w{i}", $"%{words[i]}%");
         }
         else if (!string.IsNullOrWhiteSpace(query))
         {
-            // SQL keyword fallback scoped to furniture products — search name and description only
             conditions.Add("(FamilyName LIKE @Query OR SubFamilyName LIKE @Query OR ExtraInfo LIKE @Query)");
             parameters.Add("Query", $"%{query}%");
         }
-        // When neither vector nor keyword matched, the GroupSlug condition alone still returns
-        // all furniture products so the user sees something relevant.
 
         if (furnitureType is not null)
         {
@@ -125,14 +136,9 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         }
 
         if (illuminated == true)
-        {
-            // Illuminated furniture has LED wattage > 0
             conditions.Add("WattageW IS NOT NULL AND WattageW > 0");
-        }
         else if (illuminated == false)
-        {
             conditions.Add("(WattageW IS NULL OR WattageW = 0)");
-        }
 
         if (excludedCatalogNumbers is { Length: > 0 })
         {
@@ -163,7 +169,7 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "FurnitureSearchService.SearchAsync failed for query '{Query}'", query);
+            _logger.LogError(ex, "FurnitureSearchService SQL query failed for '{Query}'", query);
             throw;
         }
     }

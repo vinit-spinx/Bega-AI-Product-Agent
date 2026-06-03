@@ -219,7 +219,7 @@ public static class AgentTools
                 ["description"] = "Catalog numbers already shown to the user — pass all previously returned catalog numbers to get a genuinely new page of results.",
                 ["items"]       = new JsonObject { ["type"] = "string" }
             },
-            ["top_k"]          = Prop("integer", "Max results — always pass 3")
+            ["top_k"]          = Prop("integer", "Max results — always pass 6")
         },
         ["query"]);
 
