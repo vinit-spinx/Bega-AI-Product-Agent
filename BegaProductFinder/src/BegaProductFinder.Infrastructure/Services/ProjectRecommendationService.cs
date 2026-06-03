@@ -405,10 +405,11 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
         decimal? maxProductPrice,
         CancellationToken ct)
     {
-        AreaQueryHints.TryGetValue(area, out var queryHint);
-        AreaGroupPriority.TryGetValue(area, out var groupPriority);
-        var query = string.Join(" ", queryHint ?? $"luminaire for {area}", projectType);
-        var candidates = groupPriority ?? [];
+        // Always produces a non-empty result — falls back to keyword inference when
+        // the area is not in the static dictionaries.
+        var queryHint = InferQueryHint(area, projectType);
+        var candidates = InferGroupsForArea(area);
+        var query = string.Join(" ", queryHint, projectType);
 
         // First pass: search with budget ceiling enforced at SQL level
         var products = await SearchAreaCandidatesAsync(query, candidates, category, maxProductPrice, ct);
@@ -515,9 +516,11 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
 
     private static string[] InferAreas(string projectType)
     {
+        // 1. Exact match
         if (DefaultAreasByProjectType.TryGetValue(projectType, out var exact))
             return exact;
 
+        // 2. Substring match (one contains the other)
         foreach (var (key, value) in DefaultAreasByProjectType)
         {
             if (projectType.Contains(key, StringComparison.OrdinalIgnoreCase) ||
@@ -525,6 +528,171 @@ public sealed class ProjectRecommendationService : IProjectRecommendationService
                 return value;
         }
 
+        // 3. Word-overlap scoring — handles inputs like "luxury boutique hotel" → "hotel"
+        var inputWords = projectType
+            .ToLowerInvariant()
+            .Split([' ', '-', '_', ','], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 3)
+            .ToHashSet();
+
+        var bestScore = 0;
+        string[]? bestMatch = null;
+        foreach (var (key, value) in DefaultAreasByProjectType)
+        {
+            var keyWords = key.ToLowerInvariant()
+                .Split([' ', '-'], StringSplitOptions.RemoveEmptyEntries);
+            var score = keyWords.Count(w => inputWords.Contains(w));
+            if (score > bestScore) { bestScore = score; bestMatch = value; }
+        }
+        if (bestMatch is not null) return bestMatch;
+
+        // 4. Keyword-category inference for project types not in the dictionary
+        var lower = projectType.ToLowerInvariant();
+        if (HasAny(lower, "hotel", "resort", "lodge", "inn", "hostel", "motel"))
+            return ["entrance", "pathways", "facade", "pool area", "landscape"];
+        if (HasAny(lower, "spa", "wellness", "retreat", "sanctuary", "thermal"))
+            return ["entrance", "pool area", "relaxation garden", "pathways", "facade"];
+        if (HasAny(lower, "villa", "mansion", "house", "home", "residence", "chalet", "cottage", "bungalow"))
+            return ["entrance", "driveway", "garden", "facade"];
+        if (HasAny(lower, "apartment", "condo", "flat", "residential complex", "housing"))
+            return ["entrance", "pathways", "parking", "garden", "common areas"];
+        if (HasAny(lower, "office", "corporate", "business", "headquarters", "hq", "commercial"))
+            return ["entrance", "outdoor plaza", "car park", "pathways", "facade"];
+        if (HasAny(lower, "school", "university", "college", "campus", "academy", "institute", "nursery"))
+            return ["pathways", "parking", "entrance", "landscape"];
+        if (HasAny(lower, "hospital", "clinic", "medical", "health centre", "care home", "nursing"))
+            return ["entrance", "car park", "pathways", "emergency access"];
+        if (HasAny(lower, "restaurant", "cafe", "bistro", "dining", "eatery", "bar", "pub", "lounge", "canteen"))
+            return ["entrance", "outdoor dining", "facade", "parking"];
+        if (HasAny(lower, "museum", "gallery", "exhibition", "cultural", "heritage", "art centre"))
+            return ["entrance", "facade", "outdoor sculpture garden", "pathways"];
+        if (HasAny(lower, "park", "plaza", "square", "promenade", "waterfront", "public space"))
+            return ["pathways", "landscape", "seating areas", "feature lighting"];
+        if (HasAny(lower, "sport", "gym", "fitness", "stadium", "arena", "leisure", "recreation"))
+            return ["entrance", "outdoor courts", "parking", "pathways"];
+        if (HasAny(lower, "retail", "shop", "mall", "market", "shopping", "outlet"))
+            return ["entrance", "car park", "pathways", "facade"];
+        if (HasAny(lower, "airport", "station", "terminal", "transport hub", "transit"))
+            return ["entrance canopy", "access roads", "parking", "pathways"];
+        if (HasAny(lower, "church", "mosque", "temple", "synagogue", "worship", "religious"))
+            return ["entrance", "garden", "pathways", "facade"];
+        if (HasAny(lower, "marina", "yacht", "harbour", "harbor", "port", "waterfront"))
+            return ["entrance", "dock walkways", "parking", "waterfront"];
+
         return ["entrance", "pathways", "landscape", "parking"];
     }
+
+    /// <summary>
+    /// Returns BEGA product groups appropriate for the given area.
+    /// Checks the static <see cref="AreaGroupPriority"/> map first, then tries
+    /// word-overlap against known area keys, and finally applies keyword rules
+    /// so any novel area description still resolves to meaningful product groups.
+    /// </summary>
+    private static string[] InferGroupsForArea(string area)
+    {
+        // 1. Exact static match
+        if (AreaGroupPriority.TryGetValue(area, out var exact)) return exact;
+
+        // 2. Word-overlap match against known area keys
+        var inputWords = area
+            .ToLowerInvariant()
+            .Split([' ', '-', ','], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 3)
+            .ToHashSet();
+
+        var bestScore = 0;
+        string[]? bestMatch = null;
+        foreach (var (key, value) in AreaGroupPriority)
+        {
+            var keyWords = key.ToLowerInvariant()
+                .Split([' ', '-'], StringSplitOptions.RemoveEmptyEntries);
+            var score = keyWords.Count(w => inputWords.Contains(w));
+            if (score > bestScore) { bestScore = score; bestMatch = value; }
+        }
+        if (bestMatch is not null) return bestMatch;
+
+        // 3. Keyword rules for areas not covered by the static map
+        var lower = area.ToLowerInvariant();
+        if (HasAny(lower, "facade", "cladding", "building face", "wall wash", "exterior wall", "elevation"))
+            return ["Floodlight", "Linear Facade", "Wall", "Building Element"];
+        if (HasAny(lower, "entrance", "entry", "portal", "front door", "main door", "arrival", "drop-off"))
+            return ["Wall", "Bollard", "In-grade", "Recessed Wall"];
+        if (HasAny(lower, "lobby", "reception", "foyer", "atrium", "concierge"))
+            return ["Recessed Ceiling", "Wall", "Pendant", "Suspended"];
+        if (HasAny(lower, "path", "walkway", "footpath", "pedestrian", "promenade", "trail"))
+            return ["Bollard", "Garden", "In-grade"];
+        if (HasAny(lower, "driveway", "drive", "motor court", "vehicle access", "forecourt"))
+            return ["Bollard", "In-grade", "Garden"];
+        if (HasAny(lower, "parking", "car park", "garage", "vehicle"))
+            return ["Floodlight", "Pole-top", "Pole"];
+        if (HasAny(lower, "pool", "swim", "aquatic", "fountain", "water feature", "pond", "lagoon"))
+            return ["In-grade", "Recessed Wall", "Wall"];
+        if (HasAny(lower, "garden", "landscape", "lawn", "grass", "planting", "green space"))
+            return ["Garden", "Bollard", "Floodlight"];
+        if (HasAny(lower, "tree", "grove", "woodland", "shrub", "hedge", "canopy", "palm"))
+            return ["Floodlight", "In-grade", "Garden"];
+        if (HasAny(lower, "terrace", "patio", "deck", "balcony", "verandah", "rooftop", "sky"))
+            return ["Wall", "Catenary", "Garden", "Pendant"];
+        if (HasAny(lower, "outdoor dining", "dining", "restaurant outdoor", "alfresco", "bistro terrace"))
+            return ["Catenary", "Pendant", "Wall", "Garden"];
+        if (HasAny(lower, "sport", "court", "pitch", "field", "track", "arena", "pitch"))
+            return ["Floodlight", "Pole"];
+        if (HasAny(lower, "road", "street", "boulevard", "avenue", "highway"))
+            return ["Pole", "Pole-top", "Floodlight"];
+        if (HasAny(lower, "security", "perimeter", "boundary", "fence", "perimeter"))
+            return ["Floodlight", "Wall", "Pole"];
+        if (HasAny(lower, "dock", "marina", "harbour", "harbor", "jetty", "pier", "quay", "waterfront"))
+            return ["Bollard", "In-grade", "Floodlight"];
+        if (HasAny(lower, "seating", "bench area", "rest area", "plaza", "courtyard"))
+            return ["Bollard", "Garden", "Wall"];
+        if (HasAny(lower, "ceiling", "interior", "indoor", "inside", "covered walkway"))
+            return ["Recessed Ceiling", "Ceiling", "Pendant"];
+        if (HasAny(lower, "monument", "statue", "sculpture", "feature tree", "landmark", "artwork"))
+            return ["Floodlight", "In-grade", "Garden"];
+        if (HasAny(lower, "spa", "wellness", "relaxation", "pool deck", "hot tub", "sauna"))
+            return ["In-grade", "Recessed Wall", "Wall"];
+        if (HasAny(lower, "roof", "rooftop", "sky lounge", "sky bar", "penthouse terrace"))
+            return ["Wall", "Garden", "Catenary"];
+
+        // Generic exterior fallback — covers everything else
+        return ["Bollard", "Wall", "Garden"];
+    }
+
+    /// <summary>
+    /// Returns a semantic query hint for the given area + project type.
+    /// Uses the static <see cref="AreaQueryHints"/> map when available,
+    /// otherwise builds a hint from the inferred product groups.
+    /// </summary>
+    private static string InferQueryHint(string area, string projectType)
+    {
+        // 1. Exact static match
+        if (AreaQueryHints.TryGetValue(area, out var exact)) return exact;
+
+        // 2. Word-overlap match against known area keys
+        var inputWords = area
+            .ToLowerInvariant()
+            .Split([' ', '-', ','], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 3)
+            .ToHashSet();
+
+        var bestScore = 0;
+        string? bestHint = null;
+        foreach (var (key, hint) in AreaQueryHints)
+        {
+            var keyWords = key.ToLowerInvariant()
+                .Split([' ', '-'], StringSplitOptions.RemoveEmptyEntries);
+            var score = keyWords.Count(w => inputWords.Contains(w));
+            if (score > bestScore) { bestScore = score; bestHint = hint; }
+        }
+        if (bestHint is not null) return bestHint;
+
+        // 3. Build hint dynamically from inferred groups + area description
+        var groups = InferGroupsForArea(area);
+        var primaryGroup = groups[0].ToLowerInvariant().Replace("-", " ");
+        return $"{primaryGroup} luminaire exterior {area}";
+    }
+
+    /// <summary>Returns true when <paramref name="text"/> contains any of the <paramref name="keywords"/>.</summary>
+    private static bool HasAny(string text, params string[] keywords) =>
+        keywords.Any(k => text.Contains(k, StringComparison.OrdinalIgnoreCase));
 }

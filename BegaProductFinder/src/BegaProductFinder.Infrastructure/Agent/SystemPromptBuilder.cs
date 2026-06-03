@@ -118,7 +118,7 @@ public sealed class SystemPromptBuilder
         Apply context silently to follow-ups. Never re-recommend a dismissed product.
 
         RESPONSE FORMAT
-        Technical and concise. Lead with the best matching catalog number and why it fits. Include key specs: Wattage, Lumens, CCT, Beam Angle, Voltage, Control Protocol. Max 3 products per response. No emojis. 200–350 words; 400–600 for project/BOM responses.
+        Technical and concise. Lead with the best matching catalog number and why it fits. Include key specs: Wattage, Lumens, CCT, Beam Angle, Voltage, Control Protocol. Max 2 products per response. No emojis. 200–350 words; 400–600 for project/BOM responses.
         For mixed furniture + lighting responses: present the furniture results first under a "Furniture" heading, then lighting results under a "Lighting" heading.
 
         REQUIRED: end every response with 3–5 context-specific follow-up actions:

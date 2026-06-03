@@ -78,7 +78,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
         _apiKey = config["Anthropic:ApiKey"]
             ?? throw new InvalidOperationException("Anthropic:ApiKey is required.");
-        _model = ResolveModel(config["Anthropic:Model"]);
+        _model = ResolveModel(config["Anthropic:Model"] ?? "sonnet");
         _maxTokens = config.GetValue<int>("Anthropic:MaxTokens", 2048);
         _maxToolIterations = config.GetValue<int>("Anthropic:MaxToolIterations", 5);
     }
