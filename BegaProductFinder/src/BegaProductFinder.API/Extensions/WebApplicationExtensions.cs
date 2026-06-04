@@ -16,6 +16,7 @@ public static class WebApplicationExtensions
         FurnitureEndpoints.Map(app);
         ProjectEndpoints.Map(app);
         BomEndpoints.Map(app);
+        ContactEndpoints.Map(app);
         AdminEndpoints.Map(app);
         return app;
     }

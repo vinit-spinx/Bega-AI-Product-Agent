@@ -21,6 +21,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// <summary>Conversation sessions — messages persisted as a JSON blob.</summary>
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
 
+    /// <summary>Contact inquiries submitted via the "Connect with BEGA Team" panel.</summary>
+    public DbSet<ContactInquiry> ContactInquiries => Set<ContactInquiry>();
+
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

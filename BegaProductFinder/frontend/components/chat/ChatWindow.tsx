@@ -14,7 +14,7 @@ const SUGGESTED_STARTERS = [
 ];
 
 export default function ChatWindow() {
-  const { messages, isLoading, sendMessage, clearSession } = useChatSession();
+  const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,6 +52,7 @@ export default function ChatWindow() {
               <MessageBubble
                 key={msg.id}
                 message={msg}
+                sessionId={sessionId}
                 onSuggestedAction={sendMessage}
               />
             ))}

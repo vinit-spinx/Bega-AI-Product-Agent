@@ -6,15 +6,17 @@ import FurnitureCard from '../product/FurnitureCard';
 import ProductCard from '../product/ProductCard';
 import ProjectAreaCard from '../product/ProjectAreaCard';
 import SuggestedActions from '../product/SuggestedActions';
+import NextStepsPanel from './NextStepsPanel';
 import StreamingText from './StreamingText';
 import VisionPlacementMap from './VisionPlacementMap';
 
 interface MessageBubbleProps {
   message: UiMessage;
+  sessionId: string;
   onSuggestedAction: (action: string) => void;
 }
 
-export default function MessageBubble({ message, onSuggestedAction }: MessageBubbleProps) {
+export default function MessageBubble({ message, sessionId, onSuggestedAction }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   if (isUser) {
@@ -172,6 +174,11 @@ export default function MessageBubble({ message, onSuggestedAction }: MessageBub
             )}
           </div>
         </div>
+
+        {/* ── Next steps panel — shown once streaming ends and recommendations are present ── */}
+        {!message.isStreaming && hasRichData && (
+          <NextStepsPanel sessionId={sessionId} />
+        )}
 
       </div>
     </div>
