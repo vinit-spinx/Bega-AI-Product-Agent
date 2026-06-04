@@ -134,6 +134,23 @@ export interface ProjectAreaRecommendation {
 
 // ── SSE event types ───────────────────────────────────────────────────────────
 
+// ── Vision placement map types ────────────────────────────────────────────────
+
+/**
+ * A single product placement annotation on a vision-analysed image.
+ * x and y are image percentages (0 = left/top, 100 = right/bottom).
+ */
+export interface PlacementMapItem {
+  id: number;
+  catalogNumber: string;
+  label: string;
+  x: number;
+  y: number;
+  zone: string;
+}
+
+// ── SSE event types ───────────────────────────────────────────────────────────
+
 export type SseEventType =
   | 'text_delta'
   | 'products'
@@ -141,6 +158,7 @@ export type SseEventType =
   | 'project_recommendation'
   | 'bom'
   | 'suggested_actions'
+  | 'placement_map'
   | 'done'
   | 'error';
 
@@ -151,6 +169,7 @@ export type SseEvent =
   | { type: 'project_recommendation'; areas: ProjectAreaRecommendation[] }
   | { type: 'bom'; report: BomReport }
   | { type: 'suggested_actions'; actions: string[] }
+  | { type: 'placement_map'; markers: PlacementMapItem[] }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
@@ -169,8 +188,10 @@ export interface UiMessage {
   content: string;
   /** Set on user messages that were sent with an image attachment. */
   imagePreview?: string;
-  /** Set on assistant messages that were triggered by a vision query — holds the user's image preview URL so the response bubble can render the visual context + product overlay. */
+  /** Set on assistant messages triggered by a vision query — the user's image preview URL for the annotated placement overlay. */
   contextImagePreview?: string;
+  /** Placement marker annotations parsed from Claude's <placement_map> tag. */
+  placementMap?: PlacementMapItem[];
   products?: ProductSearchResult[];
   furnitureItems?: FurnitureSearchResult[];
   projectAreas?: ProjectAreaRecommendation[];

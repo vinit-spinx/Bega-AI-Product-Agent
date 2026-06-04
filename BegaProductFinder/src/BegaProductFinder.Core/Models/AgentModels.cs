@@ -21,6 +21,9 @@ public enum AgentStreamEventType
     /// <summary>Suggested follow-up actions rendered as clickable pill buttons.</summary>
     SuggestedActions,
 
+    /// <summary>Product placement annotations for a vision-analysed image.</summary>
+    PlacementMap,
+
     /// <summary>Stream completed successfully — no further chunks will follow.</summary>
     Done,
 
@@ -54,6 +57,22 @@ public record AgentStreamChunk
     /// <summary>Follow-up action labels. Set when <see cref="Type"/> is <see cref="AgentStreamEventType.SuggestedActions"/>.</summary>
     public List<string>? SuggestedActions { get; init; }
 
+    /// <summary>Placement markers for a vision image. Set when <see cref="Type"/> is <see cref="AgentStreamEventType.PlacementMap"/>.</summary>
+    public List<PlacementMapItem>? PlacementMap { get; init; }
+
     /// <summary>Error description. Set when <see cref="Type"/> is <see cref="AgentStreamEventType.Error"/>.</summary>
     public string? ErrorMessage { get; init; }
 }
+
+/// <summary>
+/// Describes a single product placement point on a vision-analysed image.
+/// Coordinates are image percentages: x=0 left edge, x=100 right edge; y=0 top, y=100 bottom.
+/// </summary>
+public record PlacementMapItem(
+    int Id,
+    string CatalogNumber,
+    string Label,
+    double X,
+    double Y,
+    string Zone
+);

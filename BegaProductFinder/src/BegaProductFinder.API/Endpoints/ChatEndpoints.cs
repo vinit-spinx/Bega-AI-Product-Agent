@@ -86,6 +86,9 @@ public static class ChatEndpoints
             AgentStreamEventType.SuggestedActions =>
                 new { type = "suggested_actions", actions = chunk.SuggestedActions },
 
+            AgentStreamEventType.PlacementMap =>
+                new { type = "placement_map", markers = chunk.PlacementMap },
+
             AgentStreamEventType.Done =>
                 new { type = "done" },
 

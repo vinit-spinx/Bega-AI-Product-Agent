@@ -108,21 +108,32 @@ export function useChatSession(): UseChatSessionReturn {
           }));
           break;
 
+        case 'placement_map':
+          updateLastAssistantMessage(msg => ({
+            ...msg,
+            placementMap: event.markers,
+          }));
+          break;
+
         case 'done': {
           updateLastAssistantMessage(msg => {
-            // Extract <suggested_actions>[...]</suggested_actions> that Claude emits inline
-            // in the text stream, parse it into clickable pills, and strip it from the bubble.
-            const match = msg.content.match(/<suggested_actions>([\s\S]*?)<\/suggested_actions>/);
             let content = msg.content;
             let suggestedActions = msg.suggestedActions;
-            if (match) {
+
+            // Strip <suggested_actions> tag — parse into pills if not already received via SSE event
+            const saMatch = content.match(/<suggested_actions>([\s\S]*?)<\/suggested_actions>/);
+            if (saMatch) {
               try {
-                const parsed = JSON.parse(match[1].trim()) as string[];
+                const parsed = JSON.parse(saMatch[1].trim()) as string[];
                 if (Array.isArray(parsed) && parsed.length > 0)
                   suggestedActions = parsed;
-              } catch { /* malformed JSON — ignore */ }
+              } catch { /* ignore */ }
               content = content.replace(/<suggested_actions>[\s\S]*?<\/suggested_actions>/, '').trimEnd();
             }
+
+            // Strip <placement_map> tag — placement_map SSE event handles the structured data
+            content = content.replace(/<placement_map>[\s\S]*?<\/placement_map>/, '').trimEnd();
+
             return { ...msg, isStreaming: false, content, suggestedActions };
           });
           setIsLoading(false);

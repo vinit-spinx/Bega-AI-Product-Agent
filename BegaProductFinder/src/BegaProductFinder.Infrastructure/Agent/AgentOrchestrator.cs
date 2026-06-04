@@ -50,6 +50,10 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         @"<suggested_actions>\s*(\[[\s\S]*?\])\s*</suggested_actions>",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    private static readonly System.Text.RegularExpressions.Regex _placementMapRegex = new(
+        @"<placement_map>\s*(\[[\s\S]*?\])\s*</placement_map>",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public AgentOrchestrator(
         IHttpClientFactory httpFactory,
         IChatSessionService sessionService,
@@ -231,9 +235,22 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             catch { /* malformed JSON inside tag — tag still stripped from history */ }
         }
 
+        // Parse and strip <placement_map> (vision placement annotations)
+        List<PlacementMapItem>? parsedPlacementMap = null;
+        var pmMatch = _placementMapRegex.Match(textToSave);
+        if (pmMatch.Success)
+        {
+            textToSave = textToSave.Replace(pmMatch.Value, string.Empty).Trim();
+            try { parsedPlacementMap = JsonSerializer.Deserialize<List<PlacementMapItem>>(pmMatch.Groups[1].Value, _jsonOptions); }
+            catch { /* malformed JSON — tag stripped from history */ }
+        }
+
         // yield must be outside try/catch (CS1626)
         if (parsedActions?.Count > 0)
             yield return new AgentStreamChunk { Type = AgentStreamEventType.SuggestedActions, SuggestedActions = parsedActions };
+
+        if (parsedPlacementMap?.Count > 0)
+            yield return new AgentStreamChunk { Type = AgentStreamEventType.PlacementMap, PlacementMap = parsedPlacementMap };
 
         // Persist the user message and stripped assistant response to the session.
         // Base64 image data is never stored in history — only a short marker is kept so
