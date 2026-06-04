@@ -160,9 +160,9 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
                   {message.error}
                 </div>
               ) : (
-                <p className="text-zinc-100 text-sm">
+                <div className="text-sm min-w-0">
                   <StreamingText content={message.content} isStreaming={message.isStreaming} />
-                </p>
+                </div>
               )}
             </div>
 
