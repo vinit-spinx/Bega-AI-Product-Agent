@@ -43,6 +43,162 @@ export default function BomTable({ report }: BomTableProps) {
   // Only show the Sys W column when at least one line item carries wattage
   const hasWattageCol = report.lineItems.some(i => (i.systemWattageW ?? 0) > 0);
 
+  // ── Print invoice ─────────────────────────────────────────────────────────
+  const printInvoice = () => {
+    const printDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric', month: 'long', day: 'numeric',
+    });
+
+    const lineRows = sorted.map((item, idx) => {
+      const isNotFound = report.notFoundItems.includes(item.catalogNumber);
+      const rowBg = isNotFound ? '#3b0a0a' : idx % 2 === 0 ? '#ffffff' : '#f9f9f9';
+      return `
+        <tr style="background:${rowBg}; border-bottom:1px solid #e5e7eb;">
+          <td style="padding:8px 10px; color:#6b7280;">${item.areaLabel ?? '—'}</td>
+          <td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#b45309;">${item.catalogNumber}</td>
+          <td style="padding:8px 10px; color:#111827;">${item.description ?? '—'}</td>
+          <td style="padding:8px 10px; color:#374151;">${item.familyName ?? '—'}</td>
+          <td style="padding:8px 10px; text-align:center; color:#111827;">${item.quantity}</td>
+          ${hasWattageCol ? `<td style="padding:8px 10px; text-align:right; font-family:monospace; color:#374151;">${item.systemWattageW != null && item.systemWattageW > 0 ? item.systemWattageW.toFixed(1) + ' W' : '—'}</td>` : ''}
+          <td style="padding:8px 10px; text-align:right; font-family:monospace; color:#111827;">${item.unitDnp != null ? '$' + item.unitDnp.toFixed(2) : '—'}</td>
+          <td style="padding:8px 10px; text-align:right; font-family:monospace; font-weight:600; color:#111827;">${item.lineTotalDnp != null ? '$' + item.lineTotalDnp.toFixed(2) : '—'}</td>
+          <td style="padding:8px 10px; color:#6b7280; white-space:nowrap;">${item.leadTime ?? '—'}</td>
+        </tr>`;
+    }).join('');
+
+    const energySection = hasEnergy ? `
+      <div style="margin-top:24px; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">
+        <div style="background:#fefce8; padding:10px 14px; border-bottom:1px solid #e5e7eb;">
+          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#92400e;">
+            ⚡ Energy &amp; Power Budget
+          </span>
+          <span style="font-size:10px; color:#9ca3af; margin-left:8px;">${HOURS_PER_DAY} hr/day · $${COST_PER_KWH.toFixed(2)}/kWh</span>
+        </div>
+        <table style="width:100%; border-collapse:collapse;">
+          <tr>
+            <td style="padding:12px 14px; border-right:1px solid #e5e7eb; width:33%;">
+              <div style="font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:4px;">Total System Wattage</div>
+              <div style="font-size:20px; font-weight:700; color:#b45309;">${totalWatts.toFixed(1)} W</div>
+              <div style="font-size:10px; color:#9ca3af; margin-top:2px;">across all lighting fixtures</div>
+            </td>
+            <td style="padding:12px 14px; border-right:1px solid #e5e7eb; width:33%;">
+              <div style="font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:4px;">Annual Consumption</div>
+              <div style="font-size:20px; font-weight:700; color:#111827;">${annualKwh.toLocaleString('en-US', { maximumFractionDigits: 1 })} kWh</div>
+              <div style="font-size:10px; color:#9ca3af; margin-top:2px;">per year</div>
+            </td>
+            <td style="padding:12px 14px; width:33%;">
+              <div style="font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:4px;">Estimated Annual Cost</div>
+              <div style="font-size:20px; font-weight:700; color:#b45309;">$${annualCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style="font-size:10px; color:#9ca3af; margin-top:2px;">per year</div>
+            </td>
+          </tr>
+        </table>
+        <div style="padding:8px 14px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:10px; color:#9ca3af; font-family:monospace;">
+          Formula: ${totalWatts.toFixed(1)} W × (${HOURS_PER_DAY} hr × ${DAYS_PER_YEAR} days) ÷ 1,000 = ${annualKwh.toFixed(1)} kWh/yr &nbsp;·&nbsp; ${annualKwh.toFixed(1)} × $${COST_PER_KWH.toFixed(2)} = $${annualCost.toFixed(2)}/yr
+        </div>
+      </div>` : '';
+
+    const notFoundSection = report.notFoundItems.length > 0 ? `
+      <div style="margin-top:16px; padding:10px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px; color:#b91c1c;">
+        ⚠ Not found in catalog: ${report.notFoundItems.join(', ')}
+      </div>` : '';
+
+    const msrpRow = report.subtotalMsrp > 0 ? `
+      <tr style="background:#f9fafb;">
+        <td colspan="${hasWattageCol ? 7 : 6}" style="padding:6px 10px; text-align:right; font-size:11px; color:#6b7280;">MSRP subtotal</td>
+        <td style="padding:6px 10px; text-align:right; font-family:monospace; font-size:11px; color:#374151;">$${report.subtotalMsrp.toFixed(2)}</td>
+        <td></td>
+      </tr>` : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BOM — ${report.projectName ?? 'Bill of Materials'}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #111827; background: #fff; }
+    @page { margin: 15mm 15mm 20mm; size: A4 landscape; }
+    @media print {
+      .no-print { display: none !important; }
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+    .page { max-width: 1050px; margin: 0 auto; padding: 32px 24px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:2px solid #111827;">
+    <div>
+      <div style="font-size:22px; font-weight:800; letter-spacing:-.5px; color:#111827;">BEGA</div>
+      <div style="font-size:11px; color:#6b7280; margin-top:2px;">Architectural Lighting &amp; Urban Design</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:18px; font-weight:700; color:#111827;">Bill of Materials</div>
+      ${report.projectName ? `<div style="font-size:13px; color:#b45309; font-weight:600; margin-top:4px;">${report.projectName}</div>` : ''}
+      <div style="font-size:11px; color:#6b7280; margin-top:4px;">Generated: ${printDate}</div>
+      <div style="font-size:11px; color:#6b7280; margin-top:2px;">${report.itemCount} line item${report.itemCount === 1 ? '' : 's'} · ${report.currency}</div>
+    </div>
+  </div>
+
+  <!-- Line items table -->
+  <table>
+    <thead>
+      <tr style="background:#111827; color:#f9fafb;">
+        <th style="padding:9px 10px; text-align:left;">Area</th>
+        <th style="padding:9px 10px; text-align:left;">Catalog No.</th>
+        <th style="padding:9px 10px; text-align:left;">Description</th>
+        <th style="padding:9px 10px; text-align:left;">Family</th>
+        <th style="padding:9px 10px; text-align:center;">Qty</th>
+        ${hasWattageCol ? '<th style="padding:9px 10px; text-align:right;">Sys W</th>' : ''}
+        <th style="padding:9px 10px; text-align:right;">Unit DNP</th>
+        <th style="padding:9px 10px; text-align:right;">Line Total</th>
+        <th style="padding:9px 10px; text-align:left;">Lead Time</th>
+      </tr>
+    </thead>
+    <tbody>${lineRows}</tbody>
+    <tfoot>
+      <tr style="background:#111827; color:#f9fafb; font-weight:700;">
+        <td colspan="4" style="padding:10px 10px;">Total</td>
+        <td style="padding:10px 10px; text-align:center;">${report.itemCount}</td>
+        ${hasWattageCol ? `<td style="padding:10px 10px; text-align:right; font-family:monospace;">${totalWatts > 0 ? totalWatts.toFixed(1) + ' W' : ''}</td>` : ''}
+        <td></td>
+        <td style="padding:10px 10px; text-align:right; font-family:monospace; color:#fbbf24; font-size:14px;">$${report.subtotalDnp.toFixed(2)}</td>
+        <td></td>
+      </tr>
+      ${msrpRow}
+    </tfoot>
+  </table>
+
+  ${notFoundSection}
+  ${energySection}
+
+  <!-- Footer -->
+  <div style="margin-top:32px; padding-top:16px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+    <div style="font-size:10px; color:#9ca3af;">Prices shown are Distributor Net Price (DNP) in ${report.currency}. For final pricing confirmation and availability, contact a BEGA representative.</div>
+    <div class="no-print">
+      <button onclick="window.print()" style="background:#111827; color:#fff; border:none; padding:8px 18px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
+        🖨 Print / Save PDF
+      </button>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=1100,height=800');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  };
+
   // ── CSV export ────────────────────────────────────────────────────────────
   const exportCsv = () => {
     const headers = [
@@ -123,7 +279,7 @@ export default function BomTable({ report }: BomTableProps) {
             Export CSV
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={printInvoice}
             className="text-xs rounded-lg border border-zinc-600 text-zinc-400 hover:text-zinc-200 px-3 py-1.5 transition-colors"
           >
             Print
