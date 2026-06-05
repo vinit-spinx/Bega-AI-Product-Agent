@@ -53,7 +53,8 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
                 SubFamilyName,
                 LeadTime,
                 DnpPrice,
-                MsrpPrice
+                MsrpPrice,
+                SystemWattageW
             FROM Products
             WHERE CatalogNumber IN @CatalogNumbers
             """;
@@ -76,6 +77,7 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
         var notFound = new List<string>();
         decimal totalDnp = 0m;
         decimal totalMsrp = 0m;
+        decimal totalWattage = 0m;
 
         foreach (var request in items)
         {
@@ -97,6 +99,10 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
             totalDnp += lineDnp;
             totalMsrp += lineMsrp;
 
+            // Accumulate wattage only for products that carry electrical data (lighting, not furniture)
+            if (row.SystemWattageW is > 0m)
+                totalWattage += row.SystemWattageW.Value * request.Quantity;
+
             lineItems.Add(new BomLineItem
             {
                 CatalogNumber = request.CatalogNumber,
@@ -108,7 +114,8 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
                 LineTotalDnp = lineDnp > 0 ? lineDnp : null,
                 UnitMsrp = row.MsrpPrice,
                 LineTotalMsrp = lineMsrp > 0 ? lineMsrp : null,
-                LeadTime = row.LeadTime
+                LeadTime = row.LeadTime,
+                SystemWattageW = row.SystemWattageW is > 0m ? row.SystemWattageW : null
             });
         }
 
@@ -120,7 +127,8 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
             SubtotalMsrp = totalMsrp,
             Currency = "USD",
             ItemCount = lineItems.Count,
-            NotFoundItems = notFound
+            NotFoundItems = notFound,
+            TotalSystemWattageW = totalWattage
         };
     }
 
@@ -131,5 +139,6 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
         string? SubFamilyName,
         string? LeadTime,
         decimal? DnpPrice,
-        decimal? MsrpPrice);
+        decimal? MsrpPrice,
+        decimal? SystemWattageW);
 }

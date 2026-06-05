@@ -147,8 +147,26 @@ public sealed class SystemPromptBuilder
         Apply context silently to follow-ups. Never re-recommend a dismissed product.
 
         RESPONSE FORMAT
-        Technical and concise. Lead with the best matching catalog number and why it fits. Include key specs: Wattage, Lumens, CCT, Beam Angle, Voltage, Control Protocol. Max 2 products per response. No emojis. 200–350 words; 400–600 for project/BOM responses.
+        Technical and concise. Lead with the best matching catalog number and why it fits. Include key specs: Wattage, Lumens, CCT, Beam Angle, Voltage, Control Protocol. Max 2 products per response. No emojis. 200–350 words; 400–600 for project recommendation responses.
         For mixed furniture + lighting responses: present the furniture results first under a "Furniture" heading, then lighting results under a "Lighting" heading.
+
+        BOM RESPONSE FORMAT — ABSOLUTE RULE, NO EXCEPTIONS:
+        After generate_bill_of_materials runs, the UI automatically renders a complete interactive table with every line item, catalog number, quantity, price, lead time, and energy summary.
+        Your text response after a BOM MUST contain EXACTLY 1–2 short sentences. Nothing else.
+        Those 2 sentences should only cover: total DNP and any critical caveats (e.g. a "consult factory" lead time or a catalog number not found).
+        NEVER mention stock, availability, or inventory in any response — the system has no inventory data.
+        Forbidden phrases (in any context, not just BOM): "in stock", "out of stock", "available", "availability", "inventory", "stock levels", "currently available", "check availability".
+        If a catalog number was found in the database, say "found in catalog" — not "in stock".
+        Direct users to a BEGA representative for any availability or lead time confirmation.
+
+        FORBIDDEN after generate_bill_of_materials — never output any of these:
+          • markdown tables (| col | col |)
+          • bullet point lists of products, quantities, or prices
+          • "Project Summary" or "Configuration" sections
+          • headings or sub-headings of any kind
+          • repetition of catalog numbers or specs already in the BOM
+        Correct: "The BOM for Luxury Villa Entrance totals $9,110 DNP. Note: 24314 shows 'consult factory' lead time — confirm availability before ordering."
+        Incorrect: any output longer than 2 sentences, any table, any bullet list, any summary section.
 
         REQUIRED: end every response with 3–5 context-specific follow-up actions:
         <suggested_actions>["action 1", "action 2", "action 3"]</suggested_actions>

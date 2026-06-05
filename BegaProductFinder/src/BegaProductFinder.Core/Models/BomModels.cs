@@ -27,6 +27,13 @@ public record BomLineItem
     public decimal? UnitMsrp { get; init; }
     public decimal? LineTotalMsrp { get; init; }
     public string? LeadTime { get; init; }
+
+    /// <summary>
+    /// Total system wattage per fixture (from the <c>SystemWattageW</c> column).
+    /// Null for furniture and products without electrical data.
+    /// Multiply by <see cref="Quantity"/> to get the line-level wattage contribution.
+    /// </summary>
+    public decimal? SystemWattageW { get; init; }
 }
 
 /// <summary>
@@ -52,6 +59,13 @@ public record BomReport
 
     /// <summary>Catalog numbers from the request that were not found in the database.</summary>
     public List<string> NotFoundItems { get; init; } = [];
+
+    /// <summary>
+    /// Sum of (<c>SystemWattageW</c> × <c>Quantity</c>) across all lighting line items.
+    /// Zero when no wattage data is available (e.g. furniture-only BOM).
+    /// Used by the frontend energy calculator: kWh/yr = TotalSystemWattageW × (hrs/day × 365) / 1000.
+    /// </summary>
+    public decimal TotalSystemWattageW { get; init; }
 }
 
 /// <summary>

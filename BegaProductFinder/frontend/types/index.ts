@@ -111,6 +111,8 @@ export interface BomLineItem {
   unitMsrp?: number;
   lineTotalMsrp?: number;
   leadTime?: string;
+  /** System wattage per fixture (W). Null for furniture or products without electrical data. */
+  systemWattageW?: number;
 }
 
 export interface BomReport {
@@ -121,6 +123,8 @@ export interface BomReport {
   currency: string;
   itemCount: number;
   notFoundItems: string[];
+  /** Sum of (systemWattageW × quantity) across all lighting line items. 0 for furniture-only BOMs. */
+  totalSystemWattageW: number;
 }
 
 // ── Project recommendation types ──────────────────────────────────────────────
