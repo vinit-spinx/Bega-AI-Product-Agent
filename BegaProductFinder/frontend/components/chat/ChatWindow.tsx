@@ -9,11 +9,12 @@ import MessageBubble from './MessageBubble';
 import ShortlistButton from './ShortlistButton';
 
 const SUGGESTED_STARTERS = [
-  'Recommend lighting for a 5-star hotel entrance',
-  'Find in-ground luminaires for illuminating palm trees',
-  'Show exterior luminaires with DALI control and 2700K',
-  'Generate a BOM for a luxury villa project',
-  'Find outdoor benches for a waterfront promenade',
+  'Show me outdoor wall lights suitable for a luxury villa entrance.',
+  'Find bollard lights with dark sky compliance.',
+  'Recommend lighting products for a 5-star hotel project.',
+  'Recommend exterior parking area lighting for a villa under $700',
+  'Recommend outdoor planter & chair furniture for a public plaza.',
+  'Recommend exterior fixtures with IP65 or higher.'
 ];  
 
 export default function ChatWindow() {
