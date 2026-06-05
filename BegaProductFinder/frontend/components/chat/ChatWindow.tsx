@@ -2,8 +2,11 @@
 
 import { useEffect, useRef } from 'react';
 import { useChatSession } from '@/hooks/useChatSession';
+import { ShortlistProvider } from '@/context/ShortlistContext';
+import CompareDrawer from '../product/CompareDrawer';
 import ChatInput from './ChatInput';
 import MessageBubble from './MessageBubble';
+import ShortlistButton from './ShortlistButton';
 
 const SUGGESTED_STARTERS = [
   'Recommend lighting for a 5-star hotel entrance',
@@ -24,52 +27,58 @@ export default function ChatWindow() {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center">
-            <span className="text-zinc-900 font-bold text-sm">B</span>
+    <ShortlistProvider>
+      <div className="flex flex-col h-full bg-zinc-950">
+        {/* Top bar */}
+        <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-800 bg-zinc-900 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center">
+              <span className="text-zinc-900 font-bold text-sm">B</span>
+            </div>
+            <div>
+              <h1 className="font-semibold text-zinc-100 text-sm leading-tight">BEGA AI Product Advisor</h1>
+              <p className="text-xs text-zinc-500">Architectural lighting &amp; urban design</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-semibold text-zinc-100 text-sm leading-tight">BEGA AI Product Advisor</h1>
-            <p className="text-xs text-zinc-500">Architectural lighting &amp; urban design</p>
+          <div className="flex items-center gap-2">
+            <span className={`inline-block w-2 h-2 rounded-full ${isLoading ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`} />
+            <span className="text-xs text-zinc-500">{isLoading ? 'Thinking…' : 'Ready'}</span>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${isLoading ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`} />
-          <span className="text-xs text-zinc-500">{isLoading ? 'Thinking…' : 'Ready'}</span>
-        </div>
-      </header>
+        </header>
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-1">
-        {isEmpty ? (
-          <EmptyState onSelect={sendMessage} />
-        ) : (
-          <>
-            {messages.map(msg => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                sessionId={sessionId}
-                onSuggestedAction={sendMessage}
-              />
-            ))}
-          </>
-        )}
-        <div ref={bottomRef} />
-      </div>
+        {/* Messages area */}
+        <div className="flex-1 overflow-y-auto py-4 space-y-1">
+          {isEmpty ? (
+            <EmptyState onSelect={sendMessage} />
+          ) : (
+            <>
+              {messages.map(msg => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  sessionId={sessionId}
+                  onSuggestedAction={sendMessage}
+                />
+              ))}
+            </>
+          )}
+          <div ref={bottomRef} />
+        </div>
 
-      {/* Input */}
-      <div className="flex-shrink-0">
-        <ChatInput
-          onSend={sendMessage}
-          isLoading={isLoading}
-          onClear={clearSession}
-        />
+        {/* Input */}
+        <div className="flex-shrink-0">
+          <ChatInput
+            onSend={sendMessage}
+            isLoading={isLoading}
+            onClear={clearSession}
+          />
+        </div>
+
+        {/* Floating shortlist button + comparison drawer */}
+        <ShortlistButton />
+        <CompareDrawer />
       </div>
-    </div>
+    </ShortlistProvider>
   );
 }
 

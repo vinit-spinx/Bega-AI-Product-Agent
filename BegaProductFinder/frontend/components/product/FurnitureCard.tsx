@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FurnitureSearchResult } from '@/types';
+import { useShortlist } from '@/context/ShortlistContext';
 import DimensionTable from './DimensionTable';
 
 interface FurnitureCardProps {
@@ -10,6 +11,13 @@ interface FurnitureCardProps {
 
 export default function FurnitureCard({ item }: FurnitureCardProps) {
   const [imgError, setImgError] = useState(false);
+  const { pin, unpin, isPinned } = useShortlist();
+  const pinned = isPinned(item.catalogNumber);
+
+  const handlePin = () => {
+    if (pinned) unpin(item.catalogNumber);
+    else pin(item, 'furniture');
+  };
 
   return (
     <div className="rounded-xl border border-zinc-700 bg-zinc-800/80 overflow-hidden animate-fade-in flex flex-col">
@@ -34,9 +42,27 @@ export default function FurnitureCard({ item }: FurnitureCardProps) {
         )}
 
         <div className="flex-1 p-3 min-w-0">
-          <span className="font-mono font-bold text-amber-400 text-lg leading-tight block">
-            {item.catalogNumber}
-          </span>
+          <div className="flex items-start justify-between gap-2">
+            <span className="font-mono font-bold text-amber-400 text-lg leading-tight block">
+              {item.catalogNumber}
+            </span>
+            {/* Pin to shortlist */}
+            <button
+              onClick={handlePin}
+              title={pinned ? 'Remove from shortlist' : 'Add to shortlist'}
+              className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-150
+                ${pinned
+                  ? 'bg-amber-500 text-zinc-900 shadow-sm shadow-amber-500/40'
+                  : 'bg-zinc-700 text-zinc-400 hover:bg-amber-500/20 hover:text-amber-400'
+                }`}
+            >
+              <svg className="w-3.5 h-3.5" fill={pinned ? 'currentColor' : 'none'}
+                viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          </div>
           <div className="flex flex-wrap gap-1 mt-1">
             {item.familyName && (
               <span className="inline-block rounded-full bg-zinc-700 text-zinc-200 text-xs px-2 py-0.5">

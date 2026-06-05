@@ -22,6 +22,7 @@ const config: Config = {
       animation: {
         'typing-dot': 'typing-dot 1.4s infinite ease-in-out',
         'fade-in': 'fade-in 0.2s ease-out',
+        'slide-up': 'slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)',
       },
       keyframes: {
         'typing-dot': {
@@ -31,6 +32,10 @@ const config: Config = {
         'fade-in': {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slide-up': {
+          from: { transform: 'translateY(100%)' },
+          to: { transform: 'translateY(0)' },
         },
       },
     },
