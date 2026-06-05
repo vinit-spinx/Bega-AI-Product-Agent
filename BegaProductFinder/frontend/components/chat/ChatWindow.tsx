@@ -14,7 +14,7 @@ const SUGGESTED_STARTERS = [
   'Show exterior luminaires with DALI control and 2700K',
   'Generate a BOM for a luxury villa project',
   'Find outdoor benches for a waterfront promenade',
-];
+];  
 
 export default function ChatWindow() {
   const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
@@ -94,7 +94,6 @@ function EmptyState({ onSelect }: { onSelect: (text: string) => void }) {
       <h2 className="text-xl font-semibold text-zinc-100 mb-1">BEGA AI Product Advisor</h2>
       <p className="text-zinc-400 text-sm max-w-sm mb-8 leading-relaxed">
         Find luminaires, outdoor furniture, and complete lighting solutions for any project.
-        Ask in natural language.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl w-full">
         {SUGGESTED_STARTERS.map(s => (
