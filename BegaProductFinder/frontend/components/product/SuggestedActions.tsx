@@ -14,9 +14,10 @@ export default function SuggestedActions({ actions, onSelect }: SuggestedActions
         <button
           key={action}
           onClick={() => onSelect(action)}
-          className="rounded-full border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20
-                     text-amber-300 hover:text-amber-200 text-xs px-3 py-1.5
-                     transition-colors cursor-pointer"
+          className="rounded-full border border-bega-border-2 bg-white
+                     hover:bg-bega-bg-1 hover:border-bega-black/50
+                     text-bega-text-2 hover:text-bega-black
+                     text-xs px-3.5 py-1.5 transition-all duration-150 cursor-pointer shadow-button"
         >
           {action}
         </button>

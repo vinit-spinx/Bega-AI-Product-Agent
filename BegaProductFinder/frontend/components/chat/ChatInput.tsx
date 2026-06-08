@@ -7,12 +7,15 @@ interface ChatInputProps {
   onSend: (message: string, image?: ImageAttachment) => void;
   isLoading: boolean;
   onClear: () => void;
+  /** 'hero'  — centered landing input (rounded box, no top border, no New Chat button)
+   *  'bar'   — bottom-of-chat input bar (default) */
+  variant?: 'hero' | 'bar';
 }
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
-export default function ChatInput({ onSend, isLoading, onClear }: ChatInputProps) {
+export default function ChatInput({ onSend, isLoading, onClear, variant = 'bar' }: ChatInputProps) {
   const [text, setText] = useState('');
   const [image, setImage] = useState<ImageAttachment | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -82,72 +85,146 @@ export default function ChatInput({ onSend, isLoading, onClear }: ChatInputProps
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="border-t border-zinc-700 bg-zinc-900 px-4 pt-2 pb-3">
+  const isHero = variant === 'hero';
 
-      {/* Image preview strip */}
-      {image && (
-        <div className="flex items-center gap-2 mb-2">
-          <div className="relative w-16 h-16 flex-shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={image.previewUrl}
-              alt="Attached image"
-              className="w-full h-full object-cover rounded-lg border border-zinc-600"
-            />
-            <button
-              type="button"
-              onClick={clearImage}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-zinc-700 border border-zinc-500
-                         text-zinc-300 hover:text-white hover:bg-zinc-600 flex items-center justify-center
-                         text-xs leading-none transition-colors"
-              aria-label="Remove image"
-            >
-              ✕
-            </button>
-          </div>
-          <span className="text-xs text-zinc-400 truncate max-w-[160px]">
-            {image.mimeType.replace('image/', '').toUpperCase()}
-          </span>
-        </div>
-      )}
-
-      {/* Error message */}
-      {imageError && (
-        <p className="text-xs text-red-400 mb-1.5">{imageError}</p>
-      )}
-
-      {/* Input row */}
-      <form onSubmit={handleSubmit} className="flex items-end gap-3">
-
-        {/* Hidden file input */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept={ACCEPTED_TYPES.join(',')}
-          onChange={handleFileChange}
-          className="hidden"
+  const imagePreviewStrip = image && (
+    <div className="flex items-center gap-2 mb-3">
+      <div className="relative w-14 h-14 flex-shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={image.previewUrl}
+          alt="Attached image"
+          className="w-full h-full object-cover rounded-md border border-bega-border-2"
         />
-
-        {/* Image attach button */}
         <button
           type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={isLoading}
-          title="Attach an image (JPEG, PNG, GIF, WebP — max 5 MB)"
-          className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center
-                     bg-zinc-800 border border-zinc-600 text-zinc-400
-                     hover:text-amber-400 hover:border-amber-500 transition-colors
-                     disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={clearImage}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-bega-black text-white
+                     hover:bg-bega-text-2 flex items-center justify-center
+                     text-[10px] leading-none transition-colors"
+          aria-label="Remove image"
         >
-          {/* Simple SVG image icon */}
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-            <path fillRule="evenodd"
-              d="M1 5.5A2.5 2.5 0 013.5 3h13A2.5 2.5 0 0119 5.5v9A2.5 2.5 0 0116.5 17h-13A2.5 2.5 0 011 14.5v-9zm2.5-1A1.5 1.5 0 002 5.5v6.379l3.22-3.22a.75.75 0 011.061 0l3.47 3.47 1.47-1.47a.75.75 0 011.06 0L15 13.439V5.5A1.5 1.5 0 0013.5 4h-10zM2 14.5v-.44l3.75-3.75 3.47 3.47a.75.75 0 001.06 0l1.47-1.47 2.5 2.5H3.5A1.5 1.5 0 002 14.5zM13.5 8a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"
-              clipRule="evenodd" />
-          </svg>
+          ✕
         </button>
+      </div>
+      <span className="text-xs text-bega-text-3 truncate max-w-[160px]">
+        {image.mimeType.replace('image/', '').toUpperCase()}
+      </span>
+    </div>
+  );
 
+  const hiddenFileInput = (
+    <input
+      ref={fileRef}
+      type="file"
+      accept={ACCEPTED_TYPES.join(',')}
+      onChange={handleFileChange}
+      className="hidden"
+    />
+  );
+
+  const attachButton = (
+    <button
+      type="button"
+      onClick={() => fileRef.current?.click()}
+      disabled={isLoading}
+      title="Attach an image (JPEG, PNG, GIF, WebP — max 5 MB)"
+      className="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center
+                 border border-bega-border-2 bg-white text-bega-text-3
+                 hover:text-bega-black hover:border-bega-black/50
+                 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+        <path fillRule="evenodd"
+          d="M1 5.5A2.5 2.5 0 013.5 3h13A2.5 2.5 0 0119 5.5v9A2.5 2.5 0 0116.5 17h-13A2.5 2.5 0 011 14.5v-9zm2.5-1A1.5 1.5 0 002 5.5v6.379l3.22-3.22a.75.75 0 011.061 0l3.47 3.47 1.47-1.47a.75.75 0 011.06 0L15 13.439V5.5A1.5 1.5 0 0013.5 4h-10zM2 14.5v-.44l3.75-3.75 3.47 3.47a.75.75 0 001.06 0l1.47-1.47 2.5 2.5H3.5A1.5 1.5 0 002 14.5zM13.5 8a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"
+          clipRule="evenodd" />
+      </svg>
+    </button>
+  );
+
+  // ── Hero variant (centered landing page) ─────────────────────────────────
+  if (isHero) {
+    return (
+      
+      <div className="rounded-2xl border border-bega-border-2 bg-white
+                      shadow-[0_4px_24px_0_rgb(0_0_0/0.08)] overflow-hidden">
+        {hiddenFileInput}
+
+        {imagePreviewStrip && (
+          <div className="px-4 pt-3">{imagePreviewStrip}</div>
+        )}
+        {imageError && (
+          <p className="text-xs text-red-600 px-4 pt-2">{imageError}</p>
+        )}
+        
+        <form onSubmit={handleSubmit} className="flex items-end gap-2 px-4 py-3">
+          
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            placeholder={
+              image
+                ? 'Describe what you need for this image…'
+                : 'Ask about BEGA luminaires, furniture, or projects…'
+            }
+            rows={1}
+            disabled={isLoading}
+            className="flex-1 resize-none bg-transparent text-bega-text-1
+                       placeholder-bega-text-3 text-sm leading-relaxed
+                       focus:outline-none
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       max-h-40 overflow-y-auto"
+          />
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {attachButton}
+            <button
+              type="submit"
+              disabled={!text.trim() || isLoading}
+              className="w-9 h-9 rounded-full bg-bega-black hover:bg-bega-text-2 text-white
+                         flex items-center justify-center transition-colors shadow-button
+                         disabled:bg-bega-bg-3 disabled:cursor-not-allowed"
+              aria-label="Send"
+            >
+              {isLoading ? (
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  // ── Bar variant (bottom of chat, default) ─────────────────────────────────
+  return (
+    <div className="border-t border-bega-border-1 bg-white px-4 pt-3 pb-3">
+      {hiddenFileInput}
+
+      {imagePreviewStrip && (
+        <div className="mb-3">{imagePreviewStrip}</div>
+      )}
+      {imageError && (
+        <p className="text-xs text-red-600 mb-2">{imageError}</p>
+      )}
+
+      {/* Rounded input box — matches hero variant quality */}
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-2xl border border-bega-border-2 bg-white
+                   shadow-[0_2px_12px_0_rgb(0_0_0/0.06)] flex items-end gap-2 px-4 py-3
+                   focus-within:border-bega-border-3 transition-colors"
+      >
         <textarea
           ref={textareaRef}
           value={text}
@@ -157,39 +234,53 @@ export default function ChatInput({ onSend, isLoading, onClear }: ChatInputProps
           placeholder={
             image
               ? 'Describe what you need for this image…'
-              : 'Ask about BEGA luminaires, furniture, or projects… (e.g. \'Recommend lighting for a 5-star hotel entrance\')'
+              : 'Ask about BEGA luminaires, furniture, or projects…'
           }
           rows={1}
           disabled={isLoading}
-          className="flex-1 resize-none rounded-xl bg-zinc-800 border border-zinc-600 px-4 py-3
-                     text-zinc-100 placeholder-zinc-500 text-sm leading-relaxed
-                     focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500
+          className="flex-1 resize-none bg-transparent text-bega-text-1
+                     placeholder-bega-text-3 text-sm leading-relaxed
+                     focus:outline-none
                      disabled:opacity-50 disabled:cursor-not-allowed
                      max-h-40 overflow-y-auto"
         />
 
-        <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {attachButton}
           <button
             type="submit"
             disabled={!text.trim() || isLoading}
-            className="rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500
-                       text-zinc-900 font-semibold text-sm px-4 py-2.5 transition-colors
-                       disabled:cursor-not-allowed whitespace-nowrap"
+            className="w-9 h-9 rounded-full bg-bega-black hover:bg-bega-text-2 text-white
+                       flex items-center justify-center transition-colors shadow-button
+                       disabled:bg-bega-bg-3 disabled:cursor-not-allowed"
+            aria-label="Send"
           >
-            {isLoading ? 'Thinking…' : 'Send'}
-          </button>
-          <button
-            type="button"
-            onClick={onClear}
-            disabled={isLoading}
-            className="rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600
-                       text-zinc-400 hover:text-zinc-200 text-xs px-4 py-1.5 transition-colors
-                       disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            New chat
+            {isLoading ? (
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+              </svg>
+            )}
           </button>
         </div>
       </form>
+
+      {/* New chat — small text link below the input box */}
+      {/* <div className="flex justify-end mt-1.5 pr-1">
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={isLoading}
+          className="text-[11px] text-bega-text-3 hover:text-bega-text-2
+                     transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          New chat
+        </button>
+      </div> */}
     </div>
   );
 }

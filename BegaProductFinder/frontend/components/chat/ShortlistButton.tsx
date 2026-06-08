@@ -10,9 +10,8 @@ export default function ShortlistButton() {
     <button
       onClick={openDrawer}
       className="fixed bottom-32 right-5 z-40 flex items-center gap-2 px-4 py-2.5
-                 bg-amber-500 hover:bg-amber-400 text-zinc-900 font-semibold text-sm
-                 rounded-full shadow-xl shadow-amber-500/30 transition-all duration-200
-                 hover:scale-105 hover:shadow-amber-400/40"
+                 bg-bega-black hover:bg-bega-text-2 text-white font-medium text-sm
+                 rounded-full shadow-xl transition-all duration-200 hover:scale-105"
       aria-label={`Open shortlist — ${entries.length} product${entries.length !== 1 ? 's' : ''}`}
     >
       {/* Bookmark icon */}
@@ -21,7 +20,7 @@ export default function ShortlistButton() {
       </svg>
       <span>Shortlist</span>
       {/* Count badge */}
-      <span className="bg-zinc-900 text-amber-400 text-xs font-bold w-5 h-5 rounded-full
+      <span className="bg-bega-black text-white text-xs font-bold w-5 h-5 rounded-full
                        flex items-center justify-center leading-none">
         {entries.length}
       </span>

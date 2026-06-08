@@ -34,20 +34,20 @@ function merged(e: ShortlistEntry): Partial<ProductDetail & FurnitureSearchResul
 
 function CellValue({ value }: { value?: string | null | number | boolean }) {
   if (value == null || value === '' || value === false)
-    return <span className="text-zinc-600">—</span>;
+    return <span className="text-bega-text-3">—</span>;
   if (value === true)
-    return <span className="text-emerald-400 text-xs">✓ Yes</span>;
-  return <span className="text-zinc-200 text-xs">{String(value)}</span>;
+    return <span className="text-bega-success text-xs font-medium">✓ Yes</span>;
+  return <span className="text-bega-text-1 text-xs">{String(value)}</span>;
 }
 
 function SectionHeader({ label, colCount }: { label: string; colCount: number }) {
   return (
-    <tr className="bg-zinc-950/60">
-      <td className="sticky left-0 z-10 bg-zinc-950/60 px-4 py-1.5">
-        <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">{label}</span>
+    <tr className="bg-bega-bg-2">
+      <td className="sticky left-0 z-10 bg-bega-bg-2 px-4 py-1.5">
+        <span className="text-[10px] font-semibold text-bega-text-3 uppercase tracking-widest">{label}</span>
       </td>
       {Array.from({ length: colCount }).map((_, i) => (
-        <td key={i} className="px-3 py-1.5 border-l border-zinc-800/60" />
+        <td key={i} className="px-3 py-1.5 border-l border-bega-border-1" />
       ))}
     </tr>
   );
@@ -55,12 +55,12 @@ function SectionHeader({ label, colCount }: { label: string; colCount: number })
 
 function SpecRow({ label, values }: { label: string; values: React.ReactNode[] }) {
   return (
-    <tr className="border-b border-zinc-800/40 hover:bg-zinc-800/20 transition-colors">
-      <td className="sticky left-0 z-10 bg-zinc-900 px-4 py-2 text-zinc-500 text-xs whitespace-nowrap">
+    <tr className="border-b border-bega-border-1 hover:bg-bega-bg-1 transition-colors">
+      <td className="sticky left-0 z-10 bg-white px-4 py-2 text-bega-text-3 text-xs whitespace-nowrap">
         {label}
       </td>
       {values.map((v, i) => (
-        <td key={i} className="px-3 py-2 text-xs border-l border-zinc-800/40 min-w-[190px]">
+        <td key={i} className="px-3 py-2 text-xs border-l border-bega-border-1 min-w-[190px]">
           {v}
         </td>
       ))}
@@ -94,9 +94,6 @@ export default function CompareDrawer() {
     setBomLoading(true);
     setBomError('');
     try {
-      // Route A: call via Next.js proxy (/api/bom → BACKEND_API_URL/api/bom/generate)
-      // This avoids the self-signed certificate rejection that occurs when the browser
-      // calls NEXT_PUBLIC_API_URL (HTTPS) directly.
       const res = await fetch('/api/bom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,7 +107,6 @@ export default function CompareDrawer() {
       }
       const report = await res.json() as BomReport;
       setBomReport(report);
-      // Scroll BOM into view after render
       setTimeout(() => {
         drawerRef.current?.querySelector('[data-bom]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
@@ -127,7 +123,7 @@ export default function CompareDrawer() {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-zinc-950/70 backdrop-blur-sm"
+        className="fixed inset-0 z-50 bg-bega-black/30 backdrop-blur-sm"
         onClick={closeDrawer}
         aria-hidden
       />
@@ -136,17 +132,17 @@ export default function CompareDrawer() {
       <div
         ref={drawerRef}
         className="fixed bottom-0 left-0 right-0 z-50 h-[88vh] flex flex-col
-                   bg-zinc-900 border-t border-zinc-700 rounded-t-2xl shadow-2xl
+                   bg-white border-t border-bega-border-2 rounded-t-2xl shadow-drawer
                    overflow-hidden animate-slide-up"
       >
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-700 flex-shrink-0 bg-zinc-900">
-          <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-bega-border-1 flex-shrink-0 bg-white">
+          <svg className="w-4 h-4 text-bega-black flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M6 2a2 2 0 00-2 2v18l8-4 8 4V4a2 2 0 00-2-2H6z" />
           </svg>
-          <h2 className="font-semibold text-zinc-100 text-sm">
+          <h2 className="font-semibold text-bega-text-1 text-sm tracking-tight">
             Product Comparison
-            <span className="ml-2 text-zinc-500 font-normal text-xs">
+            <span className="ml-2 text-bega-text-3 font-normal text-xs">
               {colCount} item{colCount !== 1 ? 's' : ''}
             </span>
           </h2>
@@ -157,14 +153,14 @@ export default function CompareDrawer() {
               <button
                 onClick={handleGenerateBom}
                 disabled={bomLoading}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold
-                           bg-amber-500 hover:bg-amber-400 text-zinc-900
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold
+                           bg-bega-black hover:bg-bega-text-2 text-white
                            disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-all duration-150 shadow-sm shadow-amber-500/20"
+                           transition-all duration-150 shadow-button"
               >
                 {bomLoading ? (
                   <>
-                    <span className="w-3.5 h-3.5 border-2 border-zinc-900/40 border-t-zinc-900 rounded-full animate-spin" />
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Generating…
                   </>
                 ) : (
@@ -181,14 +177,15 @@ export default function CompareDrawer() {
 
             <button
               onClick={clearAll}
-              className="text-xs text-zinc-500 hover:text-red-400 px-3 py-2 rounded-lg
-                         hover:bg-red-900/20 transition-colors"
+              className="text-xs text-bega-text-3 hover:text-red-600 px-3 py-2 rounded-md
+                         hover:bg-red-50 transition-colors border border-transparent hover:border-red-200"
             >
               Clear all
             </button>
             <button
               onClick={closeDrawer}
-              className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100
+              className="w-8 h-8 rounded-md border border-bega-border-2 bg-bega-bg-1
+                         hover:bg-bega-bg-2 text-bega-text-2 hover:text-bega-text-1
                          flex items-center justify-center transition-colors"
               aria-label="Close comparison"
             >
@@ -198,61 +195,62 @@ export default function CompareDrawer() {
         </div>
 
         {/* ── Scrollable body ──────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto overflow-x-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-auto bg-bega-bg-1">
           <table className="w-full border-collapse" style={{ minWidth: `${160 + colCount * 210}px` }}>
             <tbody>
 
               {/* ── Product images + identity ─────────────────────────────── */}
-              <tr className="border-b border-zinc-700 bg-zinc-900/50">
-                <td className="sticky left-0 z-10 bg-zinc-900/90 w-40 px-4 py-3" />
+              <tr className="border-b border-bega-border-1 bg-white">
+                <td className="sticky left-0 z-10 bg-white w-40 px-4 py-3" />
                 {entries.map(e => {
                   const m = merged(e);
                   return (
-                    <td key={e.catalogNumber} className="px-3 py-3 border-l border-zinc-800/60 min-w-[210px] align-top">
+                    <td key={e.catalogNumber} className="px-3 py-3 border-l border-bega-border-1 min-w-[210px] align-top">
                       {/* Image */}
-                      <div className="w-full h-28 bg-zinc-800 rounded-xl overflow-hidden mb-3 flex items-center justify-center relative">
+                      <div className="w-full h-28 bg-bega-bg-1 rounded-lg overflow-hidden mb-3
+                                      flex items-center justify-center relative border border-bega-border-1">
                         {m.familyListPageImage ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={m.familyListPageImage} alt="" className="h-full w-full object-contain p-2" />
                         ) : (
-                          <span className="text-zinc-600 text-xs">No image</span>
+                          <span className="text-bega-text-3 text-xs">No image</span>
                         )}
                         {e.detailLoading && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/40">
-                            <span className="w-4 h-4 border-2 border-amber-400/40 border-t-amber-400 rounded-full animate-spin" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+                            <span className="w-4 h-4 border-2 border-bega-border-2 border-t-bega-black rounded-full animate-spin" />
                           </div>
                         )}
                         {/* Remove button */}
                         <button
                           onClick={() => unpin(e.catalogNumber)}
-                          className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-zinc-900/80 text-zinc-400
-                                     hover:text-red-400 hover:bg-red-900/40 flex items-center justify-center
-                                     text-[10px] transition-colors"
+                          className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-bega-border-2
+                                     text-bega-text-3 hover:text-red-600 hover:border-red-300
+                                     flex items-center justify-center text-[10px] transition-colors shadow-button"
                           title="Remove from comparison"
                         >
                           ✕
                         </button>
                         {/* Kind badge */}
-                        <div className={`absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-medium
+                        <div className={`absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded font-semibold border
                           ${e.kind === 'furniture'
-                            ? 'bg-emerald-900/80 text-emerald-300'
-                            : 'bg-amber-900/80 text-amber-300'}`}>
+                            ? 'bg-violet-50 text-violet-700 border-violet-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                           {e.kind === 'furniture' ? 'Furniture' : 'Lighting'}
                         </div>
                       </div>
 
                       {/* Catalog # */}
-                      <p className="font-mono font-bold text-amber-400 text-base leading-tight">{e.catalogNumber}</p>
+                      <p className="font-mono font-bold text-bega-black text-base leading-tight">{e.catalogNumber}</p>
 
                       {/* Family badges */}
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {m.familyName && (
-                          <span className="text-[10px] bg-zinc-700 text-zinc-300 rounded-full px-2 py-0.5">
+                          <span className="text-[10px] bg-bega-bg-2 text-bega-text-2 border border-bega-border-1 rounded px-2 py-0.5">
                             {m.familyName}
                           </span>
                         )}
                         {m.subFamilyName && (
-                          <span className="text-[10px] bg-zinc-700/60 text-zinc-400 rounded-full px-2 py-0.5">
+                          <span className="text-[10px] bg-bega-bg-1 text-bega-text-3 border border-bega-border-1 rounded px-2 py-0.5">
                             {m.subFamilyName}
                           </span>
                         )}
@@ -260,7 +258,7 @@ export default function CompareDrawer() {
 
                       {/* Category breadcrumb */}
                       {'categoryName' in m && (m.categoryName || (m as ProductSearchResult).groupsName) && (
-                        <p className="text-[10px] text-zinc-500 mt-1">
+                        <p className="text-[10px] text-bega-text-3 mt-1">
                           {[(m as ProductSearchResult).categoryName, (m as ProductSearchResult).groupsName]
                             .filter(Boolean).join(' › ')}
                         </p>
@@ -271,17 +269,18 @@ export default function CompareDrawer() {
               </tr>
 
               {/* ── Quantity row ──────────────────────────────────────────── */}
-              <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
-                <td className="sticky left-0 z-10 bg-zinc-900/90 px-4 py-2.5 text-zinc-400 text-xs font-medium">
+              <tr className="border-b border-bega-border-1 bg-bega-bg-1">
+                <td className="sticky left-0 z-10 bg-bega-bg-1 px-4 py-2.5 text-bega-text-2 text-xs font-medium">
                   Quantity
                 </td>
                 {entries.map(e => (
-                  <td key={e.catalogNumber} className="px-3 py-2.5 border-l border-zinc-800/40">
+                  <td key={e.catalogNumber} className="px-3 py-2.5 border-l border-bega-border-1">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setQuantity(e.catalogNumber, e.quantity - 1)}
                         disabled={e.quantity <= 1}
-                        className="w-6 h-6 rounded-md bg-zinc-700 hover:bg-zinc-600 text-zinc-200
+                        className="w-6 h-6 rounded border border-bega-border-2 bg-white
+                                   hover:bg-bega-bg-2 text-bega-text-1
                                    disabled:opacity-30 flex items-center justify-center text-sm
                                    transition-colors leading-none"
                       >
@@ -293,14 +292,15 @@ export default function CompareDrawer() {
                         max={999}
                         value={e.quantity}
                         onChange={ev => setQuantity(e.catalogNumber, parseInt(ev.target.value) || 1)}
-                        className="w-12 bg-zinc-800 border border-zinc-600 rounded-lg text-center
-                                   text-zinc-100 text-sm py-0.5
-                                   focus:outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/20"
+                        className="w-12 bg-white border border-bega-border-2 rounded text-center
+                                   text-bega-text-1 text-sm py-0.5
+                                   focus:outline-none focus:border-bega-black/60 focus:ring-1 focus:ring-bega-black/20"
                       />
                       <button
                         onClick={() => setQuantity(e.catalogNumber, e.quantity + 1)}
                         disabled={e.quantity >= 999}
-                        className="w-6 h-6 rounded-md bg-zinc-700 hover:bg-zinc-600 text-zinc-200
+                        className="w-6 h-6 rounded border border-bega-border-2 bg-white
+                                   hover:bg-bega-bg-2 text-bega-text-1
                                    disabled:opacity-30 flex items-center justify-center text-sm
                                    transition-colors leading-none"
                       >
@@ -336,7 +336,7 @@ export default function CompareDrawer() {
                     <div key={e.catalogNumber} className="flex flex-wrap gap-1">
                       {ccts.map(c => (
                         <span key={c.code}
-                          className="text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/30
+                          className="text-[10px] bg-bega-bg-1 text-bega-text-2 border border-bega-border-2
                                      rounded px-1.5 py-0.5 font-mono">
                           {c.kelvin}K
                         </span>
@@ -414,15 +414,15 @@ export default function CompareDrawer() {
 
               {/* ── Spec links ────────────────────────────────────────────── */}
               <SectionHeader label="Documents" colCount={colCount} />
-              <tr className="border-b border-zinc-800/40">
-                <td className="sticky left-0 z-10 bg-zinc-900 px-4 py-2.5 text-zinc-500 text-xs">Spec Sheet</td>
+              <tr className="border-b border-bega-border-1">
+                <td className="sticky left-0 z-10 bg-white px-4 py-2.5 text-bega-text-3 text-xs">Spec Sheet</td>
                 {entries.map(e => {
                   const m = merged(e);
                   return (
-                    <td key={e.catalogNumber} className="px-3 py-2.5 border-l border-zinc-800/40">
+                    <td key={e.catalogNumber} className="px-3 py-2.5 border-l border-bega-border-1">
                       {m.specDocumentUrl ? (
                         <a href={m.specDocumentUrl} target="_blank" rel="noopener noreferrer"
-                          className="text-[10px] text-amber-400 hover:underline">
+                          className="text-[11px] text-bega-black hover:underline font-medium">
                           View PDF ↗
                         </a>
                       ) : <CellValue value={null} />}
@@ -439,7 +439,7 @@ export default function CompareDrawer() {
 
           {/* ── BOM error ─────────────────────────────────────────────────── */}
           {bomError && (
-            <div className="mx-4 mb-4 px-4 py-3 rounded-xl bg-red-900/20 border border-red-700/40 text-red-400 text-xs">
+            <div className="mx-4 mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
               {bomError}
             </div>
           )}
@@ -447,7 +447,7 @@ export default function CompareDrawer() {
           {/* ── BOM result ────────────────────────────────────────────────── */}
           {bomReport && (
             <div data-bom className="mx-4 mb-6">
-              <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">
+              <p className="text-[11px] text-bega-text-3 mb-2 font-semibold uppercase tracking-widest">
                 Bill of Materials — Shortlisted Products
               </p>
               <BomTable report={bomReport} />

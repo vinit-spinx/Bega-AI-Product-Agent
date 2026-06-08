@@ -37,14 +37,14 @@ export default function DimensionTable({
   if (visible.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 mt-1">
+    <div className="flex flex-wrap gap-1.5 mt-2">
       {visible.map(dim => (
         <span
           key={dim.label}
-          className="inline-flex items-center gap-1 text-xs bg-zinc-700/60 rounded px-2 py-0.5"
+          className="inline-flex items-center gap-1 text-[11px] bg-bega-bg-1 border border-bega-border-1 rounded px-2 py-0.5"
         >
-          <span className="text-zinc-400 font-medium">{dim.label}:</span>
-          <span className="text-zinc-200 font-mono">{formatDim(dim.whole, dim.fraction)}</span>
+          <span className="text-bega-text-3 font-medium">{dim.label}:</span>
+          <span className="text-bega-text-1 font-mono">{formatDim(dim.whole, dim.fraction)}</span>
         </span>
       ))}
     </div>

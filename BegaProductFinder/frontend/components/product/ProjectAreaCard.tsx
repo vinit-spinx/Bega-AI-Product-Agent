@@ -7,16 +7,16 @@ interface ProjectAreaCardProps {
 
 export default function ProjectAreaCard({ area }: ProjectAreaCardProps) {
   return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-800/40 overflow-hidden animate-fade-in">
-      <div className="flex items-start justify-between px-4 py-3 border-b border-zinc-700 bg-zinc-800/60">
+    <div className="rounded-lg border border-bega-border-1 bg-white overflow-hidden animate-fade-in shadow-card">
+      <div className="flex items-start justify-between px-4 py-3 border-b border-bega-border-1 bg-bega-bg-1">
         <div>
-          <h4 className="font-semibold text-zinc-100 capitalize">{area.areaName}</h4>
-          <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{area.rationale}</p>
+          <h4 className="font-semibold text-bega-text-1 capitalize tracking-tight">{area.areaName}</h4>
+          <p className="text-xs text-bega-text-2 mt-0.5 leading-relaxed">{area.rationale}</p>
         </div>
         {area.estimatedTotalDnp > 0 && (
           <div className="text-right flex-shrink-0 ml-4">
-            <p className="text-xs text-zinc-500">Est. DNP</p>
-            <p className="font-mono font-semibold text-amber-400 text-sm">
+            <p className="text-[11px] text-bega-text-3">Est. DNP</p>
+            <p className="font-mono font-semibold text-bega-black text-sm">
               ${area.estimatedTotalDnp.toFixed(2)}
             </p>
           </div>
