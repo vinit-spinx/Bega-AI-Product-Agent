@@ -77,6 +77,15 @@ public record ProductDetail : ProductSearchResult
     /// <summary>JSON array of product option strings e.g. "CUS - Custom finish".</summary>
     public string? ProductOptionsJson { get; init; }
 
+    /// <summary>Combined technical spec text from the BEGA JSON ProductTechnicalSpec field.</summary>
+    public string? ProductTechnicalSpec { get; init; }
+
+    /// <summary>Family-level extra information from the BEGA JSON FamilyExtraInfo field.</summary>
+    public string? FamilyExtraInfo { get; init; }
+
+    /// <summary>Full AIEnrichment object as a JSON blob — includes SearchKeywords, LightingApplications, ProjectContexts, etc.</summary>
+    public string? AIEnrichmentJson { get; init; }
+
     /// <summary>Accessory names e.g. "Remote driver box · Static white" — rendered as chips by <c>ProductCard</c>.</summary>
     public List<string> Accessories { get; init; } = [];
 }

@@ -20,6 +20,7 @@ public class Product
     public string? FamilySlug { get; set; }
     public string? SubFamilyName { get; set; }
     public string? FamilyListPageImage { get; set; }
+    public string? FamilyListPageImageOrientation { get; set; }
     public string? FamilyTechImage { get; set; }
     public string? LuminaireType { get; set; }
     public string? GroupSlug { get; set; }
@@ -89,12 +90,22 @@ public class Product
     public string TechnicalDocumentUrl { get; set; } = string.Empty;
     public string SpecDocumentUrl { get; set; } = string.Empty;
 
+    /// <summary>Combined technical spec text sourced from the BEGA JSON ProductTechnicalSpec field.</summary>
+    public string? ProductTechnicalSpec { get; set; }
+
+    /// <summary>Family-level extra information from the BEGA JSON FamilyExtraInfo field.</summary>
+    public string? FamilyExtraInfo { get; set; }
+
+    /// <summary>Full AIEnrichment object serialized as JSON — includes SearchKeywords, LightingApplications, ProjectContexts, etc.</summary>
+    public string? AIEnrichmentJson { get; set; }
+
     public DateTime LastUpdated { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
     public ICollection<ProductAccessory> Accessories { get; set; } = [];
     public ICollection<ProductChunk> Chunks { get; set; } = [];
+    public ICollection<ProductProject> Projects { get; set; } = [];
 }
 
 /// <summary>A parsed color temperature option from the semicolon-delimited ColorTemperature field e.g. "2700K (K27)".</summary>

@@ -78,6 +78,7 @@ public sealed class IngestionPipeline : IIngestionPipeline
             Console.WriteLine("  [Reset] Deleting existing records...");
             await _db.ProductChunks.ExecuteDeleteAsync(ct);
             await _db.ProductAccessories.ExecuteDeleteAsync(ct);
+            await _db.ProductProjects.ExecuteDeleteAsync(ct);
             await _db.Products.ExecuteDeleteAsync(ct);
             _logger.LogInformation("Reset complete — all product records deleted");
         }
@@ -107,9 +108,12 @@ public sealed class IngestionPipeline : IIngestionPipeline
                     product.LastUpdated = DateTime.UtcNow;
                     _db.Products.Update(product);
 
-                    // Replace accessories in bulk
+                    // Replace accessories and projects in bulk
                     await _db.ProductAccessories
                         .Where(a => a.ProductId == existingId)
+                        .ExecuteDeleteAsync(ct);
+                    await _db.ProductProjects
+                        .Where(p => p.ProductId == existingId)
                         .ExecuteDeleteAsync(ct);
                 }
                 else
@@ -121,13 +125,21 @@ public sealed class IngestionPipeline : IIngestionPipeline
                 _db.ChangeTracker.Clear();
 
                 foreach (var acc in parsed.Accessories)
-                {
                     acc.ProductId = product.ProductId;
-                }
 
                 if (parsed.Accessories.Count > 0)
                 {
                     await _db.ProductAccessories.AddRangeAsync(parsed.Accessories, ct);
+                    await _db.SaveChangesAsync(ct);
+                    _db.ChangeTracker.Clear();
+                }
+
+                foreach (var proj in parsed.Projects)
+                    proj.ProductId = product.ProductId;
+
+                if (parsed.Projects.Count > 0)
+                {
+                    await _db.ProductProjects.AddRangeAsync(parsed.Projects, ct);
                     await _db.SaveChangesAsync(ct);
                     _db.ChangeTracker.Clear();
                 }
@@ -204,7 +216,7 @@ public sealed class IngestionPipeline : IIngestionPipeline
         {
             var product = parsed.Product;
             var pages = pdfPagesByProduct.TryGetValue(product.ProductId, out var p) ? p : [];
-            var chunks = _chunker.ChunkProduct(product, pages);
+            var chunks = _chunker.ChunkProduct(product, parsed.Accessories, pages);
             allNewChunks.AddRange(chunks);
         }
 

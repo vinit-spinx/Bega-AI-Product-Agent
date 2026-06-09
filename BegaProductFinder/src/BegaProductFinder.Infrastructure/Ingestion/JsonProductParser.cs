@@ -7,7 +7,7 @@ namespace BegaProductFinder.Infrastructure.Ingestion;
 
 /// <summary>
 /// Deserializes the raw BEGA products JSON array and maps each element to
-/// <see cref="Product"/> + <see cref="ProductAccessory"/> entities ready for upsert.
+/// <see cref="Product"/> + <see cref="ProductAccessory"/> + <see cref="ProductProject"/> entities ready for upsert.
 /// </summary>
 public sealed class JsonProductParser
 {
@@ -28,7 +28,7 @@ public sealed class JsonProductParser
 
     /// <summary>
     /// Parses the BEGA product JSON file (a bare array, no root wrapper key)
-    /// and returns a list of fully-mapped <see cref="ParsedProduct"/> pairs.
+    /// and returns a list of fully-mapped <see cref="ParsedProduct"/> records.
     /// Malformed individual records are skipped with a warning rather than
     /// aborting the entire run.
     /// </summary>
@@ -86,6 +86,7 @@ public sealed class JsonProductParser
 
             // Image URLs
             FamilyListPageImage = raw.FamilyListPageImage,
+            FamilyListPageImageOrientation = raw.FamilyListPageImageOrientation,
             FamilyTechImage = raw.FamilyTechImage,
 
             // Dimensions — stored exactly as received from JSON, no arithmetic
@@ -119,6 +120,13 @@ public sealed class JsonProductParser
                 ? JsonSerializer.Serialize(raw.ProductOptions)
                 : null,
 
+            // New fields
+            ProductTechnicalSpec = raw.ProductTechnicalSpec,
+            FamilyExtraInfo = raw.FamilyExtraInfo,
+            AIEnrichmentJson = raw.AIEnrichment is not null
+                ? JsonSerializer.Serialize(raw.AIEnrichment)
+                : null,
+
             LastUpdated = DateTime.UtcNow
         };
 
@@ -139,19 +147,38 @@ public sealed class JsonProductParser
             }
         }
 
-        return new ParsedProduct(product, accessories);
+        // Map project references as child entities
+        var projects = new List<ProductProject>();
+        if (raw.Projects is { Count: > 0 })
+        {
+            for (int i = 0; i < raw.Projects.Count; i++)
+            {
+                var rawProject = raw.Projects[i];
+                projects.Add(new ProductProject
+                {
+                    Name = rawProject.Name ?? string.Empty,
+                    Description = rawProject.Description,
+                    Tags = rawProject.Tags,
+                    Slug = rawProject.Slug,
+                    Location = rawProject.Location,
+                    ListingImage = rawProject.ListingImage,
+                    SortOrder = i
+                });
+            }
+        }
+
+        return new ParsedProduct(product, accessories, projects);
     }
 }
 
-/// <summary>A product entity together with its parsed accessories, ready for upsert.</summary>
-public sealed record ParsedProduct(Product Product, List<ProductAccessory> Accessories);
+/// <summary>A product entity together with its parsed accessories and project references, ready for upsert.</summary>
+public sealed record ParsedProduct(Product Product, List<ProductAccessory> Accessories, List<ProductProject> Projects);
 
-// ── Internal DTO — mirrors the raw BEGA JSON structure ─────────────────────────
+// ── Internal DTOs — mirror the raw BEGA JSON structure ─────────────────────────
 
 /// <summary>
 /// Internal deserialization target for a single element of the BEGA product JSON array.
 /// Property names match the exact casing used in the BEGA catalog export.
-/// <c>[JsonPropertyName]</c> is used only where the C# name would differ from the JSON key.
 /// </summary>
 internal sealed class BegaProductJson
 {
@@ -229,4 +256,52 @@ internal sealed class BegaProductJson
 
     public List<string>? ProductOptions { get; set; }
     public List<string>? ProductAccessories { get; set; }
+
+    // New fields
+    public string? ProductTechnicalSpec { get; set; }
+    public string? FamilyExtraInfo { get; set; }
+    public BegaAIEnrichmentJson? AIEnrichment { get; set; }
+    public List<BegaProjectJson>? Projects { get; set; }
+}
+
+/// <summary>Internal DTO for the AIEnrichment object in the BEGA product JSON.</summary>
+internal sealed class BegaAIEnrichmentJson
+{
+    public List<string>? ProductIntent { get; set; }
+    public List<string>? LightingApplications { get; set; }
+    public List<string>? TargetObjects { get; set; }
+    public List<string>? InstallationMethods { get; set; }
+    public List<string>? EnvironmentSuitability { get; set; }
+    public List<string>? ControlCapabilities { get; set; }
+    public List<string>? OpticalCapabilities { get; set; }
+    public List<string>? MountingCapabilities { get; set; }
+    public List<string>? MaterialCapabilities { get; set; }
+    public List<string>? MaintenanceCategories { get; set; }
+    public List<string>? AccessoryCapabilities { get; set; }
+    public List<string>? ProjectContexts { get; set; }
+    public List<string>? ElectricalFeatures { get; set; }
+    public List<string>? LightSourceFeatures { get; set; }
+    public List<string>? FinishCapabilities { get; set; }
+    public List<string>? SearchKeywords { get; set; }
+    public string? SearchDescription { get; set; }
+    public List<string>? AvailableColorTemperatures { get; set; }
+    public List<string>? ColorTemperatureCategories { get; set; }
+    public List<string>? BeamAngles { get; set; }
+    public string? BeamType { get; set; }
+    public string? BeamClassification { get; set; }
+    public List<string>? FurnitureCategories { get; set; }
+    public List<string>? FurnitureApplications { get; set; }
+    public List<string>? FurnitureMaterials { get; set; }
+    public List<string>? FurnitureFeatures { get; set; }
+}
+
+/// <summary>Internal DTO for a single entry in the BEGA product JSON Projects array.</summary>
+internal sealed class BegaProjectJson
+{
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public string? Tags { get; set; }
+    public string? Slug { get; set; }
+    public string? Location { get; set; }
+    public string? ListingImage { get; set; }
 }

@@ -320,6 +320,7 @@ public sealed class ProductSearchService : IProductSearchService
                 p.DnpPrice, p.MsrpPrice,
                 p.SocialEnviornmentalHealth, p.ReplacementCatalogNumber,
                 p.ExtraInfo, p.ProductOptionsJson,
+                p.ProductTechnicalSpec, p.FamilyExtraInfo, p.AIEnrichmentJson,
                 p.SpecDocumentUrl, p.TechnicalDocumentUrl,
                 0.0 AS MatchScore
             FROM Products p
@@ -624,7 +625,7 @@ public sealed class ProductSearchService : IProductSearchService
         if (words.Count > 0)
         {
             var wordConditions = words
-                .Select((_, i) => $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} OR GroupsName LIKE @w{i} OR LuminaireType LIKE @w{i} OR Application LIKE @w{i} OR ExtraInfo LIKE @w{i})")
+                .Select((_, i) => $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} OR GroupsName LIKE @w{i} OR LuminaireType LIKE @w{i} OR Application LIKE @w{i} OR ExtraInfo LIKE @w{i} OR ProductTechnicalSpec LIKE @w{i} OR FamilyExtraInfo LIKE @w{i} OR AIEnrichmentJson LIKE @w{i})")
                 .ToList();
 
             var wordSql = $"""
@@ -677,7 +678,7 @@ public sealed class ProductSearchService : IProductSearchService
 
         var words2 = words.Count > 0 ? words : [query];
         var broadConditions = words2
-            .Select((_, i) => $"(FamilyName LIKE @b{i} OR GroupsName LIKE @b{i} OR LuminaireType LIKE @b{i})")
+            .Select((_, i) => $"(FamilyName LIKE @b{i} OR GroupsName LIKE @b{i} OR LuminaireType LIKE @b{i} OR ProductTechnicalSpec LIKE @b{i} OR FamilyExtraInfo LIKE @b{i} OR AIEnrichmentJson LIKE @b{i})")
             .ToList();
         for (int i = 0; i < words2.Count; i++)
             broadParams.Add($"b{i}", $"%{words2[i]}%");

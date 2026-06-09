@@ -111,7 +111,8 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
             var wordConditions = words
                 .Select((_, i) =>
                     $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} " +
-                    $"OR GroupsName LIKE @w{i} OR ExtraInfo LIKE @w{i})")
+                    $"OR GroupsName LIKE @w{i} OR ExtraInfo LIKE @w{i} " +
+                    $"OR ProductTechnicalSpec LIKE @w{i} OR FamilyExtraInfo LIKE @w{i} OR AIEnrichmentJson LIKE @w{i})")
                 .ToList();
             conditions.Add($"({string.Join(" OR ", wordConditions)})");
             for (int i = 0; i < words.Count; i++)
@@ -119,7 +120,7 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         }
         else if (!string.IsNullOrWhiteSpace(query))
         {
-            conditions.Add("(FamilyName LIKE @Query OR SubFamilyName LIKE @Query OR ExtraInfo LIKE @Query)");
+            conditions.Add("(FamilyName LIKE @Query OR SubFamilyName LIKE @Query OR ExtraInfo LIKE @Query OR ProductTechnicalSpec LIKE @Query OR FamilyExtraInfo LIKE @Query OR AIEnrichmentJson LIKE @Query)");
             parameters.Add("Query", $"%{query}%");
         }
 
@@ -131,7 +132,7 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
 
         if (material is not null)
         {
-            conditions.Add("(Finish LIKE @Material OR ExtraInfo LIKE @Material)");
+            conditions.Add("(Finish LIKE @Material OR ExtraInfo LIKE @Material OR ProductTechnicalSpec LIKE @Material OR FamilyExtraInfo LIKE @Material)");
             parameters.Add("Material", $"%{material}%");
         }
 

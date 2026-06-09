@@ -24,6 +24,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// <summary>Contact inquiries submitted via the "Connect with BEGA Team" panel.</summary>
     public DbSet<ContactInquiry> ContactInquiries => Set<ContactInquiry>();
 
+    /// <summary>Project references linked to products from the BEGA JSON Projects array.</summary>
+    public DbSet<ProductProject> ProductProjects => Set<ProductProject>();
+
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -33,6 +33,7 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 
         // Image URLs
         builder.Property(p => p.FamilyListPageImage).HasMaxLength(1000);
+        builder.Property(p => p.FamilyListPageImageOrientation).HasMaxLength(10);
         builder.Property(p => p.FamilyTechImage).HasMaxLength(1000);
 
         // Electrical / photometric specs
@@ -82,6 +83,11 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         // Document URLs
         builder.Property(p => p.TechnicalDocumentUrl).IsRequired().HasMaxLength(1000);
         builder.Property(p => p.SpecDocumentUrl).IsRequired().HasMaxLength(1000);
+
+        // New fields from updated BEGA JSON
+        builder.Property(p => p.ProductTechnicalSpec).HasColumnType("nvarchar(max)");
+        builder.Property(p => p.FamilyExtraInfo).HasColumnType("nvarchar(max)");
+        builder.Property(p => p.AIEnrichmentJson).HasColumnType("nvarchar(max)");
 
         // Audit timestamps
         builder.Property(p => p.CreatedAt).HasDefaultValueSql("GETUTCDATE()").ValueGeneratedOnAdd();
