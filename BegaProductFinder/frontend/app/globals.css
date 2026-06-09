@@ -23,7 +23,22 @@
 }
 
 @layer utilities {
+  /* Typing indicator dots */
   .typing-dot-1 { animation: typing-dot 1.4s infinite ease-in-out; }
   .typing-dot-2 { animation: typing-dot 1.4s infinite ease-in-out 0.2s; }
   .typing-dot-3 { animation: typing-dot 1.4s infinite ease-in-out 0.4s; }
+
+  /* Stagger helpers — apply animate-fade-in + these on list items */
+  .stagger-1  { animation-delay:  60ms; }
+  .stagger-2  { animation-delay: 120ms; }
+  .stagger-3  { animation-delay: 180ms; }
+  .stagger-4  { animation-delay: 240ms; }
+  .stagger-5  { animation-delay: 300ms; }
+  .stagger-6  { animation-delay: 360ms; }
+  .stagger-7  { animation-delay: 420ms; }
+  .stagger-8  { animation-delay: 480ms; }
+
+  /* Direction-aware message entrance */
+  .msg-user { @apply animate-slide-in-right; }
+  .msg-ai   { @apply animate-slide-in-left; }
 }

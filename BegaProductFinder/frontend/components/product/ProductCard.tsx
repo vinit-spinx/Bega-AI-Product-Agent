@@ -30,26 +30,27 @@ export default function ProductCard({ product }: ProductCardProps) {
   const cctOptions = parseCct(product.colorTemperatureJson);
 
   return (
-    <div className="rounded-lg border border-bega-border-1 bg-white overflow-hidden animate-fade-in
-                    flex flex-col shadow-card hover:shadow-card-hover transition-shadow duration-200">
+    <div className="group rounded-xl border border-bega-border-1 bg-white overflow-hidden animate-fade-in
+                    flex flex-col shadow-card hover:shadow-card-hover transition-all duration-200 hover:-translate-y-px">
       {/* ── Image + header ─────────────────────────────────────────────────── */}
       <div className="flex gap-0">
-        {/* Product image */}
+        {/* Product image — taller well */}
         {product.familyListPageImage && !imgError ? (
-          <div className="w-24 flex-shrink-0 bg-bega-bg-1 flex items-center justify-center overflow-hidden
-                          border-r border-bega-border-1">
+          <div className="w-28 flex-shrink-0 bg-bega-bg-1 flex items-center justify-center
+                          overflow-hidden border-r border-bega-border-1 min-h-[8.5rem]">
             <img
               src={product.familyListPageImage}
               alt={product.familyName ?? product.catalogNumber}
-              className="w-full h-full object-contain max-h-28"
+              className="w-full h-full object-contain max-h-[8.5rem] p-2
+                         transition-transform duration-500 group-hover:scale-[1.06]"
               loading="lazy"
               onError={() => setImgError(true)}
             />
           </div>
         ) : (
-          <div className="w-24 flex-shrink-0 bg-bega-bg-1 flex items-center justify-center
-                          max-h-28 min-h-[7rem] border-r border-bega-border-1">
-            <svg className="w-8 h-8 text-bega-border-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-28 flex-shrink-0 bg-bega-bg-1 flex items-center justify-center
+                          min-h-[8.5rem] border-r border-bega-border-1">
+            <svg className="w-7 h-7 text-bega-border-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
                 d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
@@ -57,31 +58,31 @@ export default function ProductCard({ product }: ProductCardProps) {
         )}
 
         {/* Header info */}
-        <div className="flex-1 p-3 min-w-0">
+        <div className="flex-1 p-3.5 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <span className="font-mono font-bold text-bega-black text-base leading-tight block">
+              {/* Catalog number — strong typographic anchor */}
+              <span className="font-mono font-semibold text-bega-black text-[17px] leading-none tracking-tight block mb-1.5">
                 {product.catalogNumber}
               </span>
-              <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex flex-wrap gap-1">
                 {product.familyName && (
-                  <span className="inline-block rounded bg-bega-bg-2 text-bega-text-2 text-[11px] px-2 py-0.5 border border-bega-border-1">
+                  <span className="inline-block rounded-sm bg-bega-bg-2 text-bega-text-2 text-[10px] px-2 py-0.5 border border-bega-border-1 font-medium">
                     {product.familyName}
                   </span>
                 )}
                 {product.subFamilyName && (
-                  <span className="inline-block rounded bg-bega-bg-1 text-bega-text-3 text-[11px] px-2 py-0.5 border border-bega-border-1">
+                  <span className="inline-block rounded-sm bg-bega-bg-1 text-bega-text-3 text-[10px] px-2 py-0.5 border border-bega-border-1">
                     {product.subFamilyName}
                   </span>
                 )}
               </div>
             </div>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
-              {/* Pin to shortlist */}
               <button
                 onClick={handlePin}
                 title={pinned ? 'Remove from shortlist' : 'Add to shortlist'}
-                className={`w-7 h-7 rounded flex items-center justify-center transition-all duration-150 border
+                className={`w-7 h-7 rounded-sm flex items-center justify-center transition-all duration-150 border
                   ${pinned
                     ? 'bg-bega-black border-bega-black text-white shadow-button'
                     : 'bg-white border-bega-border-2 text-bega-text-3 hover:border-bega-black/60 hover:text-bega-black'
@@ -94,22 +95,21 @@ export default function ProductCard({ product }: ProductCardProps) {
                 </svg>
               </button>
               {product.isAdaCompliant && (
-                <span className="text-[10px] rounded bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 whitespace-nowrap font-medium">
+                <span className="text-[10px] rounded-sm bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 whitespace-nowrap font-medium">
                   ADA
                 </span>
               )}
               {product.isExpressDelivery && (
-                <span className="text-[10px] rounded bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 whitespace-nowrap font-medium">
+                <span className="text-[10px] rounded-sm bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 whitespace-nowrap font-medium">
                   Express
                 </span>
               )}
             </div>
           </div>
 
-          {/* Breadcrumb */}
           {(product.categoryName || product.groupsName) && (
-            <p className="text-[11px] text-bega-text-3 mt-1 tracking-wide">
-              {[product.categoryName, product.groupsName].filter(Boolean).join(' › ')}
+            <p className="text-[10px] text-bega-text-3 mt-2 tracking-widest uppercase font-medium">
+              {[product.categoryName, product.groupsName].filter(Boolean).join(' · ')}
             </p>
           )}
         </div>

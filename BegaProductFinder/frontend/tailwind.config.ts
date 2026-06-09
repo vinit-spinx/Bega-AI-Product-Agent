@@ -44,9 +44,14 @@ const config: Config = {
         button:      '0 1px 2px 0 rgb(0 0 0 / 0.07)',
       },
       animation: {
-        'typing-dot': 'typing-dot 1.4s infinite ease-in-out',
-        'fade-in':    'fade-in 0.2s ease-out',
-        'slide-up':   'slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+        'typing-dot':     'typing-dot 1.4s infinite ease-in-out',
+        'fade-in':        'fade-in 0.35s ease-out both',
+        'slide-up':       'slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+        'slide-in-right': 'slide-in-right 0.35s ease-out both',
+        'slide-in-left':  'slide-in-left 0.35s ease-out both',
+        'scale-in':       'scale-in 0.3s ease-out both',
+        'float':          'float 7s ease-in-out infinite',
+        'draw':           'draw 1.4s ease-out both',
       },
       keyframes: {
         'typing-dot': {
@@ -54,12 +59,32 @@ const config: Config = {
           '40%':            { transform: 'scale(1)', opacity: '1' },
         },
         'fade-in': {
-          from: { opacity: '0', transform: 'translateY(4px)' },
+          from: { opacity: '0', transform: 'translateY(6px)' },
           to:   { opacity: '1', transform: 'translateY(0)' },
         },
         'slide-up': {
           from: { transform: 'translateY(100%)' },
           to:   { transform: 'translateY(0)' },
+        },
+        'slide-in-right': {
+          from: { opacity: '0', transform: 'translateX(14px)' },
+          to:   { opacity: '1', transform: 'translateX(0)' },
+        },
+        'slide-in-left': {
+          from: { opacity: '0', transform: 'translateX(-14px)' },
+          to:   { opacity: '1', transform: 'translateX(0)' },
+        },
+        'scale-in': {
+          from: { opacity: '0', transform: 'scale(0.96)' },
+          to:   { opacity: '1', transform: 'scale(1)' },
+        },
+        'float': {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%':      { transform: 'translateY(-8px)' },
+        },
+        'draw': {
+          from: { strokeDashoffset: '1' },
+          to:   { strokeDashoffset: '0' },
         },
       },
     },

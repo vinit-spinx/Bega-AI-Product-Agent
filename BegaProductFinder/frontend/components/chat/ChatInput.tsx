@@ -157,7 +157,7 @@ export default function ChatInput({ onSend, isLoading, onClear, variant = 'bar' 
           <p className="text-xs text-red-600 px-4 pt-2">{imageError}</p>
         )}
         
-        <form onSubmit={handleSubmit} className="flex items-end gap-2 px-4 py-3">
+        <form onSubmit={handleSubmit} className="flex items-center gap-2 px-4 py-3">
           
           <textarea
             ref={textareaRef}
@@ -165,15 +165,10 @@ export default function ChatInput({ onSend, isLoading, onClear, variant = 'bar' 
             onChange={e => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             onInput={handleInput}
-            placeholder={
-              image
-                ? 'Describe what you need for this image…'
-                : 'Ask about BEGA luminaires, furniture, or projects…'
-            }
             rows={1}
             disabled={isLoading}
             className="flex-1 resize-none bg-transparent text-bega-text-1
-                       placeholder-bega-text-3 text-sm leading-relaxed
+                       placeholder-bega-text-3 text-base leading-relaxed
                        focus:outline-none
                        disabled:opacity-50 disabled:cursor-not-allowed
                        max-h-40 overflow-y-auto"
