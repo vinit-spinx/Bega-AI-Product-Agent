@@ -6,8 +6,26 @@ namespace BegaProductFinder.Infrastructure.Agent;
 /// </summary>
 public sealed class SystemPromptBuilder
 {
-    /// <summary>Returns the fully assembled system prompt string.</summary>
-    public string Build() => SystemPrompt;
+    // Isolated so it can be stripped when DepthAnalysis:Enabled = false
+    private const string DepthMapStep = """
+
+        [SILENT STEP D — Depth map, do NOT output analysis]
+        Use IMAGE 2 pixel brightness to validate surface zones only.
+        WHITE = very close, GREY = mid-distance solid surface (VALID), BLACK = sky/far (INVALID above y=40%).
+        Stairs and facades always appear GREY — they ARE valid placement zones.
+        """;
+
+    /// <summary>
+    /// Returns the fully assembled system prompt string.
+    /// When <paramref name="depthAnalysisEnabled"/> is <c>false</c>, the depth-map
+    /// validation step is omitted because no second image is sent to Claude.
+    /// </summary>
+    public string Build(bool depthAnalysisEnabled = true)
+    {
+        if (depthAnalysisEnabled) return SystemPrompt;
+        return SystemPrompt.Replace(DepthMapStep, string.Empty, StringComparison.Ordinal);
+    }
+
     private const string SystemPrompt = """
         You are BEGA North America's architectural lighting advisor. Always retrieve real catalog data with tools — never fabricate catalog numbers or specs.
         A request may contain multiple intents (furniture + lighting); call one tool per intent in the same turn.

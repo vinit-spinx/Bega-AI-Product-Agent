@@ -37,6 +37,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private readonly string _model;
     private readonly int _maxTokens;
     private readonly int _maxToolIterations;
+    private readonly bool _depthAnalysisEnabled;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -89,6 +90,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         _model = ResolveModel(config["Anthropic:Model"] ?? "sonnet");
         _maxTokens = config.GetValue<int>("Anthropic:MaxTokens", 2048);
         _maxToolIterations = config.GetValue<int>("Anthropic:MaxToolIterations", 5);
+        _depthAnalysisEnabled = config.GetValue<bool>("DepthAnalysis:Enabled", true);
     }
 
     /// <inheritdoc/>
@@ -149,7 +151,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         // The depth map gives Claude explicit surface-distance information so placement markers
         // land on physical surfaces rather than sky or mid-air regions.
         string? depthMapBase64 = null;
-        if (imageBase64 is not null)
+        if (imageBase64 is not null && _depthAnalysisEnabled)
         {
             depthMapBase64 = await _depthAnalysis.GetDepthMapBase64Async(imageBase64, ct);
             if (depthMapBase64 is not null)
@@ -157,13 +159,17 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             else
                 _logger.LogDebug("Depth analysis unavailable — sending single-image vision request");
         }
+        else if (imageBase64 is not null)
+        {
+            _logger.LogDebug("Depth analysis disabled — sending single-image vision request");
+        }
 
         // When an image is present, build a content-block array message (vision turn).
         // When a depth map is also available, include it as a second labeled image block.
         // Otherwise fall back to a plain text string (standard turn, no extra tokens).
         apiMessages.Add(BuildUserMessage(userMessage, imageBase64, imageMimeType, depthMapBase64));
 
-        var systemPrompt = _promptBuilder.Build();
+        var systemPrompt = _promptBuilder.Build(_depthAnalysisEnabled);
         var tools = _toolDefinitions;
 
         string finalAssistantText = string.Empty;
