@@ -5,6 +5,14 @@ export interface ColorTemperatureOption {
   code: string;
 }
 
+/** A real-world BEGA installation project that features a product. slug is a full URL when present. */
+export interface ProductProject {
+  name: string | null;
+  location: string | null;
+  listingImage: string | null;
+  slug: string | null;
+}
+
 export interface ProductSearchResult {
   productId: number;
   catalogNumber: string;
@@ -42,6 +50,8 @@ export interface ProductSearchResult {
   specDocumentUrl?: string;
   technicalDocumentUrl?: string;
   matchScore: number;
+  /** Real-world projects featuring this product. Up to 3 for search results, all for detail. */
+  projects?: ProductProject[];
 }
 
 export interface ProductDetail extends ProductSearchResult {
@@ -86,6 +96,8 @@ export interface FurnitureSearchResult {
   specDocumentUrl?: string;
   technicalDocumentUrl?: string;
   matchScore: number;
+  /** Real-world projects featuring this furniture item. Up to 3 entries. */
+  projects?: ProductProject[];
 }
 
 export interface FamilyBrowseResult {

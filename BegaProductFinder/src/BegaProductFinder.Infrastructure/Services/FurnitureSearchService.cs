@@ -164,9 +164,14 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         try
         {
             await using var conn = new SqlConnection(_connectionString);
-            var results = await conn.QueryAsync<FurnitureSearchResult>(
-                new CommandDefinition(sql, parameters, cancellationToken: ct));
-            return results.ToList();
+            var results = (await conn.QueryAsync<FurnitureSearchResult>(
+                new CommandDefinition(sql, parameters, cancellationToken: ct))).ToList();
+            if (results.Count > 0)
+            {
+                var projectMap = await FetchProjectsAsync(conn, results.Select(r => r.ProductId).ToArray(), ct);
+                return results.Select(r => r with { Projects = ProjectsFor(projectMap, r.ProductId) }).ToList();
+            }
+            return results;
         }
         catch (Exception ex)
         {
@@ -174,4 +179,30 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
             throw;
         }
     }
+
+    private record ProjectRow(int ProductId, string? Name, string? Location, string? ListingImage, string? Slug);
+
+    private static async Task<Dictionary<int, List<ProductProjectDto>>> FetchProjectsAsync(
+        SqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
+    {
+        if (productIds.Length == 0) return [];
+        const string sql = """
+            SELECT ProductId, Name, Location, ListingImage, Slug
+            FROM (
+                SELECT ProductId, Name, Location, ListingImage, Slug,
+                       ROW_NUMBER() OVER (PARTITION BY ProductId ORDER BY SortOrder) AS rn
+                FROM ProductProjects
+                WHERE ProductId IN @Ids
+            ) t
+            WHERE rn <= @Max
+            """;
+        var rows = await conn.QueryAsync<ProjectRow>(
+            new CommandDefinition(sql, new { Ids = productIds, Max = maxPerProduct }, cancellationToken: ct));
+        return rows
+            .GroupBy(r => r.ProductId)
+            .ToDictionary(g => g.Key, g => g.Select(r => new ProductProjectDto(r.Name, r.Location, r.ListingImage, r.Slug)).ToList());
+    }
+
+    private static IReadOnlyList<ProductProjectDto> ProjectsFor(Dictionary<int, List<ProductProjectDto>> map, int id)
+        => map.TryGetValue(id, out var list) ? list : [];
 }

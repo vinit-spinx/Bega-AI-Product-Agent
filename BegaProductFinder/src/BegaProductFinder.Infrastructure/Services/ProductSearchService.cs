@@ -215,6 +215,12 @@ public sealed class ProductSearchService : IProductSearchService
                 diverse.Add(p);
         }
 
+        if (diverse.Count > 0)
+        {
+            await using var projectConn = new SqlConnection(_connectionString);
+            var projectMap = await FetchProjectsAsync(projectConn, diverse.Select(p => p.ProductId).ToArray(), ct);
+            return diverse.Select(p => p with { Projects = ProjectsFor(projectMap, p.ProductId) }).ToList();
+        }
         return diverse;
     }
 
@@ -288,9 +294,14 @@ public sealed class ProductSearchService : IProductSearchService
         try
         {
             await using var conn = new SqlConnection(_connectionString);
-            var results = await conn.QueryAsync<ProductSearchResult>(
-                new CommandDefinition(sql, parameters, cancellationToken: ct));
-            return results.ToList();
+            var results = (await conn.QueryAsync<ProductSearchResult>(
+                new CommandDefinition(sql, parameters, cancellationToken: ct))).ToList();
+            if (results.Count > 0)
+            {
+                var projectMap = await FetchProjectsAsync(conn, results.Select(r => r.ProductId).ToArray(), ct);
+                return results.Select(r => r with { Projects = ProjectsFor(projectMap, r.ProductId) }).ToList();
+            }
+            return results;
         }
         catch (Exception ex)
         {
@@ -345,7 +356,17 @@ public sealed class ProductSearchService : IProductSearchService
             var accessories = await conn.QueryAsync<string>(
                 new CommandDefinition(accessoriesSql, new { detail.ProductId }, cancellationToken: ct));
 
-            return detail with { Accessories = accessories.ToList() };
+            var projectRows = await conn.QueryAsync<ProjectRow>(
+                new CommandDefinition(
+                    "SELECT ProductId, Name, Location, ListingImage, Slug FROM ProductProjects WHERE ProductId = @ProductId ORDER BY SortOrder",
+                    new { detail.ProductId },
+                    cancellationToken: ct));
+
+            return detail with
+            {
+                Accessories = accessories.ToList(),
+                Projects = projectRows.Select(r => new ProductProjectDto(r.Name, r.Location, r.ListingImage, r.Slug)).ToList(),
+            };
         }
         catch (Exception ex)
         {
@@ -657,7 +678,10 @@ public sealed class ProductSearchService : IProductSearchService
                 new CommandDefinition(wordSql, structuredParams, cancellationToken: ct))).ToList();
 
             if (wordResults.Count > 0)
-                return wordResults;
+            {
+                var pm = await FetchProjectsAsync(conn, wordResults.Select(r => r.ProductId).ToArray(), ct);
+                return wordResults.Select(r => r with { Projects = ProjectsFor(pm, r.ProductId) }).ToList();
+            }
         }
 
         // If structured filters are active (e.g. ControlProtocol=DALI) and nothing matched,
@@ -710,10 +734,46 @@ public sealed class ProductSearchService : IProductSearchService
             ORDER BY CatalogNumber
             """;
 
-        var broadResults = await conn.QueryAsync<ProductSearchResult>(
-            new CommandDefinition(broadSql, broadParams, cancellationToken: ct));
-        return broadResults.ToList();
+        var broadResults = (await conn.QueryAsync<ProductSearchResult>(
+            new CommandDefinition(broadSql, broadParams, cancellationToken: ct))).ToList();
+        if (broadResults.Count > 0)
+        {
+            var pm = await FetchProjectsAsync(conn, broadResults.Select(r => r.ProductId).ToArray(), ct);
+            return broadResults.Select(r => r with { Projects = ProjectsFor(pm, r.ProductId) }).ToList();
+        }
+        return broadResults;
     }
+
+    // Used to map Dapper result rows to ProductProjectDto — record avoids anonymous-type limitations
+    private record ProjectRow(int ProductId, string? Name, string? Location, string? ListingImage, string? Slug);
+
+    /// <summary>
+    /// Batch-fetches up to <paramref name="maxPerProduct"/> projects per product ID in a single query.
+    /// Uses ROW_NUMBER() so the database does the per-product limiting rather than client-side filtering.
+    /// </summary>
+    private static async Task<Dictionary<int, List<ProductProjectDto>>> FetchProjectsAsync(
+        SqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
+    {
+        if (productIds.Length == 0) return [];
+        const string sql = """
+            SELECT ProductId, Name, Location, ListingImage, Slug
+            FROM (
+                SELECT ProductId, Name, Location, ListingImage, Slug,
+                       ROW_NUMBER() OVER (PARTITION BY ProductId ORDER BY SortOrder) AS rn
+                FROM ProductProjects
+                WHERE ProductId IN @Ids
+            ) t
+            WHERE rn <= @Max
+            """;
+        var rows = await conn.QueryAsync<ProjectRow>(
+            new CommandDefinition(sql, new { Ids = productIds, Max = maxPerProduct }, cancellationToken: ct));
+        return rows
+            .GroupBy(r => r.ProductId)
+            .ToDictionary(g => g.Key, g => g.Select(r => new ProductProjectDto(r.Name, r.Location, r.ListingImage, r.Slug)).ToList());
+    }
+
+    private static IReadOnlyList<ProductProjectDto> ProjectsFor(Dictionary<int, List<ProductProjectDto>> map, int id)
+        => map.TryGetValue(id, out var list) ? list : [];
 
     private static string? MapSpecKeyToColumn(string specKey) => specKey switch
     {

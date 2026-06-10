@@ -1,6 +1,17 @@
 namespace BegaProductFinder.Core.Models;
 
 /// <summary>
+/// A real-world BEGA installation project that features a product.
+/// Shown as a thumbnail strip on <c>ProductCard</c> so users can see the product in context.
+/// </summary>
+public record ProductProjectDto(
+    string? Name,
+    string? Location,
+    string? ListingImage,
+    string? Slug
+);
+
+/// <summary>
 /// Flattened product DTO returned by search operations and emitted on the SSE "products" event.
 /// Contains all fields needed to render a <c>ProductCard</c> component.
 /// </summary>
@@ -52,6 +63,13 @@ public record ProductSearchResult
 
     /// <summary>Relevance score from the vector similarity search (0–1). 0 for SQL-only results.</summary>
     public double MatchScore { get; init; }
+
+    /// <summary>
+    /// Real-world installation projects that feature this product.
+    /// Up to 3 entries for search results; all entries for <see cref="ProductDetail"/>.
+    /// Empty when the product has no associated projects.
+    /// </summary>
+    public IReadOnlyList<ProductProjectDto> Projects { get; init; } = [];
 }
 
 /// <summary>
@@ -127,6 +145,12 @@ public record FurnitureSearchResult
 
     /// <summary>Relevance score from the vector similarity search (0–1).</summary>
     public double MatchScore { get; init; }
+
+    /// <summary>
+    /// Real-world installation projects that feature this furniture item. Up to 3 entries.
+    /// Empty when the product has no associated projects.
+    /// </summary>
+    public IReadOnlyList<ProductProjectDto> Projects { get; init; } = [];
 }
 
 /// <summary>

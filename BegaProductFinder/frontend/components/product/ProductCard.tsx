@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { ColorTemperatureOption, ProductSearchResult } from '@/types';
+import type { ColorTemperatureOption, ProductProject, ProductSearchResult } from '@/types';
 import { useShortlist } from '@/context/ShortlistContext';
 import DimensionTable from './DimensionTable';
 
@@ -191,6 +191,20 @@ export default function ProductCard({ product }: ProductCardProps) {
           )}
         </div>
       </div>
+
+      {/* ── Project showcase — only when product has associated projects ───── */}
+      {product.projects && product.projects.length > 0 && (
+        <div className="px-3 pb-3 border-t border-bega-border-1">
+          <p className="text-[10px] text-bega-text-3 mt-2.5 mb-2 font-semibold uppercase tracking-[0.14em]">
+            Seen in {product.projects.length === 1 ? '1 Project' : `${product.projects.length} Projects`}
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
+            {product.projects.map((project, i) => (
+              <ProjectThumbnail key={i} project={project} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -202,4 +216,45 @@ function SpecRow({ label, value }: { label: string; value: string }) {
       <span className="text-bega-text-1 truncate">{value}</span>
     </>
   );
+}
+
+function ProjectThumbnail({ project }: { project: ProductProject }) {
+  const card = (
+    <div className="flex-shrink-0 w-[4.5rem] rounded-lg overflow-hidden border border-bega-border-1
+                    bg-bega-bg-1 hover:border-bega-black/40 transition-colors">
+      {project.listingImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={project.listingImage}
+          alt={project.name ?? ''}
+          className="w-full h-11 object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="w-full h-11 bg-bega-bg-2 flex items-center justify-center">
+          <svg className="w-5 h-5 text-bega-border-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9" />
+          </svg>
+        </div>
+      )}
+      <div className="px-1.5 py-1">
+        <p className="text-[9px] text-bega-text-1 font-medium leading-tight truncate">
+          {project.name ?? 'Project'}
+        </p>
+        {project.location && (
+          <p className="text-[9px] text-bega-text-3 leading-tight truncate">{project.location}</p>
+        )}
+      </div>
+    </div>
+  );
+
+  if (project.slug) {
+    return (
+      <a href={project.slug} target="_blank" rel="noopener noreferrer">
+        {card}
+      </a>
+    );
+  }
+  return card;
 }
