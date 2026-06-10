@@ -32,6 +32,10 @@ export default function VisionPlacementMap({
     return null;
   };
 
+  // Only show markers whose catalog numbers are present in the displayed product/furniture lists.
+  // This prevents phantom markers when Claude references catalog numbers not returned by tools.
+  const validMarkers = markers.filter(m => getItem(m.catalogNumber) !== null);
+
   const toggleMarker = (id: number) =>
     setActiveId(prev => (prev === id ? null : id));
 
@@ -66,8 +70,8 @@ export default function VisionPlacementMap({
       ? isActive ? 'bg-emerald-500 text-white' : 'bg-emerald-400/80 text-white'
       : isActive ? 'bg-bega-black text-white' : 'bg-bega-black/80 text-white';
 
-  const hasFurniture = markers.some(m => getItem(m.catalogNumber)?.kind === 'furniture');
-  const hasLighting  = markers.some(m => getItem(m.catalogNumber)?.kind === 'product');
+  const hasFurniture = validMarkers.some(m => getItem(m.catalogNumber)?.kind === 'furniture');
+  const hasLighting  = validMarkers.some(m => getItem(m.catalogNumber)?.kind === 'product');
 
   return (
     <div className="space-y-3">
@@ -113,12 +117,12 @@ export default function VisionPlacementMap({
           )}
           <div className="bg-black/70 backdrop-blur-sm text-white/70
                           text-[10px] px-2 py-1 rounded-full border border-white/20">
-            {markers.length} placement{markers.length !== 1 ? 's' : ''}
+            {validMarkers.length} placement{validMarkers.length !== 1 ? 's' : ''}
           </div>
         </div>
 
         {/* ── Placement markers ──────────────────────────────────────────────── */}
-        {markers.map(marker => {
+        {validMarkers.map(marker => {
           const found = getItem(marker.catalogNumber);
           const kind  = found?.kind ?? null;
           const isActive = activeId === marker.id;
@@ -283,7 +287,7 @@ export default function VisionPlacementMap({
 
       {/* ── Placement legend grid ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {markers.map(marker => {
+        {validMarkers.map(marker => {
           const found = getItem(marker.catalogNumber);
           const kind  = found?.kind ?? null;
           const isActive = activeId === marker.id;

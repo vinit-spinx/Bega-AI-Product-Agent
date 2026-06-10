@@ -531,7 +531,9 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 .Select(n => n?.GetValue<string>() ?? string.Empty)
                 .Where(s => s.Length > 0)
                 .ToArray(),
-            // Cap at 6 — vision queries request top_k=6; regular queries always pass top_k=3
+            // Cap at 6. Single-area vision queries use top_k=6 (1 call × 6 = 6 products).
+            // Multi-area vision queries use top_k=3 (2 calls × 3 = 6 products total).
+            // Text-only queries always pass top_k=3. Cap prevents runaway results.
             TopK = Math.Min(input["top_k"]?.GetValue<int>() ?? 3, 6)
         };
 

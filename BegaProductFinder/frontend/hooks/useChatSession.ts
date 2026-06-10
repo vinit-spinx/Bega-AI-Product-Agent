@@ -4,9 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageAttachment, SseEvent, UiMessage } from '@/types';
 
 const SESSION_KEY = 'bega_session_id';
-// Vision queries produce exactly 2 lighting searches × top_k=3 = 6 products.
-// Regular queries produce top_k=3 = 3 products. Cap at 6 to prevent runaway accumulation
-// if the model makes more tool calls than the system prompt allows.
+// Single-area vision queries return top_k=6; multi-area return 3+3=6; text queries return 3.
+// Cap at 6 — total products shown per assistant message is always ≤ 6.
 const MAX_PRODUCTS_PER_MESSAGE = 6;
 
 function getOrCreateSessionId(): string {
@@ -41,6 +40,9 @@ export function useChatSession(): UseChatSessionReturn {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const sessionIdRef = useRef<string>('');
+  // Persists the last uploaded image so follow-up turns (e.g. after a clarification question)
+  // can still render the placement map on the original scene image.
+  const lastImageRef = useRef<ImageAttachment | undefined>(undefined);
 
   useEffect(() => {
     sessionIdRef.current = getOrCreateSessionId();
@@ -162,6 +164,10 @@ export function useChatSession(): UseChatSessionReturn {
     async (text: string, image?: ImageAttachment) => {
       if (!text.trim() || isLoading) return;
 
+      // Track the latest image so subsequent turns (e.g. the reply to a clarification question)
+      // still have access to the original image preview for the placement map overlay.
+      if (image) lastImageRef.current = image;
+
       const userMsg: UiMessage = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -169,9 +175,10 @@ export function useChatSession(): UseChatSessionReturn {
         imagePreview: image?.previewUrl,
         isStreaming: false,
       };
-      // Pass the image preview to the assistant message so the response bubble
-      // can render the visual context + best-product overlay without extra API calls.
-      const assistantMsg = newAssistantMessage(image?.previewUrl);
+      // For the assistant message, prefer the current image preview; fall back to the last
+      // stored one so VisionPlacementMap renders on the original scene even on follow-up turns.
+      const contextImagePreview = image?.previewUrl ?? lastImageRef.current?.previewUrl;
+      const assistantMsg = newAssistantMessage(contextImagePreview);
 
       setMessages(prev => [...prev, userMsg, assistantMsg]);
       setIsLoading(true);
@@ -238,6 +245,7 @@ export function useChatSession(): UseChatSessionReturn {
     const newId = crypto.randomUUID();
     sessionStorage.setItem(SESSION_KEY, newId);
     sessionIdRef.current = newId;
+    lastImageRef.current = undefined;
     setMessages([]);
     setIsLoading(false);
   }, []);
