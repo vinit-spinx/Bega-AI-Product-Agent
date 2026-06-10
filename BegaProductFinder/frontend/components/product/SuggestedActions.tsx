@@ -5,23 +5,22 @@ interface SuggestedActionsProps {
   onSelect: (action: string) => void;
 }
 
-export default function SuggestedActions({ actions, onSelect }: SuggestedActionsProps) {
+export default function SuggestedActions({ actions }: SuggestedActionsProps) {
   if (actions.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 mt-3">
-      {actions.map(action => (
-        <button
-          key={action}
-          onClick={() => onSelect(action)}
-          className="rounded-full border border-bega-border-2 bg-white
-                     hover:bg-bega-bg-1 hover:border-bega-black/50
-                     text-bega-text-2 hover:text-bega-black
-                     text-xs px-3.5 py-1.5 transition-all duration-150 cursor-pointer shadow-button"
-        >
-          {action}
-        </button>
-      ))}
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-bega-text-3 mb-2">
+        What else do you want 
+      </p>
+      <div className="space-y-1">
+        {actions.map(action => (
+          <div key={action} className="flex items-baseline gap-2 text-sm text-bega-text-2">
+            <span className="text-bega-border-3 text-xs flex-shrink-0">›</span>
+            {action}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

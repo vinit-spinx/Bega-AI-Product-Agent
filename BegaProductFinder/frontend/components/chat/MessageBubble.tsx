@@ -165,7 +165,7 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
           <BegaAvatar />
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-2xl rounded-tl-sm border border-bega-border-1
-                            px-4 py-3 inline-block max-w-full shadow-card">
+                            px-4 py-3 block max-w-full shadow-card">
               {message.error ? (
                 <div className="text-red-600 text-sm">
                   <span className="font-medium">Error: </span>
@@ -176,13 +176,13 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
                   <StreamingText content={message.content} isStreaming={message.isStreaming} />
                 </div>
               )}
-            </div>
 
-            {!message.isStreaming && message.suggestedActions && message.suggestedActions.length > 0 && (
-              <div className="mt-2">
-                <SuggestedActions actions={message.suggestedActions} onSelect={onSuggestedAction} />
-              </div>
-            )}
+              {!message.isStreaming && message.suggestedActions && message.suggestedActions.length > 0 && (
+                <div className="border-t border-bega-border-1 mt-3 pt-3">
+                  <SuggestedActions actions={message.suggestedActions} onSelect={() => {}} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
