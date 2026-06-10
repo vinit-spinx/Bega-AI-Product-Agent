@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageAttachment, SseEvent, UiMessage } from '@/types';
 
 const SESSION_KEY = 'bega_session_id';
+// Vision queries produce exactly 2 lighting searches × top_k=3 = 6 products.
+// Regular queries produce top_k=3 = 3 products. Cap at 6 to prevent runaway accumulation
+// if the model makes more tool calls than the system prompt allows.
+const MAX_PRODUCTS_PER_MESSAGE = 6;
 
 function getOrCreateSessionId(): string {
   if (typeof window === 'undefined') return crypto.randomUUID();
@@ -66,11 +70,12 @@ export function useChatSession(): UseChatSessionReturn {
           console.log('[SSE] products event received, count:', event.products?.length, event.products?.map(p => p.productId));
           updateLastAssistantMessage(msg => {
             const existing = msg.products ?? [];
+            if (existing.length >= MAX_PRODUCTS_PER_MESSAGE) return msg;
             const newProducts = event.products ?? [];
             // Deduplicate by catalogNumber (more reliable than productId which may be 0)
             const seenKeys = new Set(existing.map(p => p.catalogNumber));
             const deduped = newProducts.filter(p => !seenKeys.has(p.catalogNumber));
-            return { ...msg, products: [...existing, ...deduped] };
+            return { ...msg, products: [...existing, ...deduped].slice(0, MAX_PRODUCTS_PER_MESSAGE) };
           });
           break;
         }

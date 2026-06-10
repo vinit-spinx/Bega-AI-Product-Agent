@@ -47,6 +47,9 @@ builder.Services.AddHttpClient("Anthropic", client =>
     client.DefaultRequestHeaders.Add("x-api-key", config["Anthropic:ApiKey"] ?? string.Empty);
 });
 
+// Named client for Depth Anything V2 sidecar — timeout set per-request from config
+builder.Services.AddHttpClient("DepthAnalysis");
+
 // ── Swap-architecture services ────────────────────────────────────────────────
 builder.Services.AddEmbeddingService(config);
 builder.Services.AddVectorSearch(config);
@@ -58,6 +61,9 @@ builder.Services.AddScoped<IFurnitureSearchService, FurnitureSearchService>();
 builder.Services.AddScoped<IProjectRecommendationService, ProjectRecommendationService>();
 builder.Services.AddScoped<IBillOfMaterialsService, BillOfMaterialsService>();
 builder.Services.AddScoped<IChatSessionService, ChatSessionService>();
+
+// ── Depth analysis sidecar (Depth Anything V2) ───────────────────────────────
+builder.Services.AddScoped<DepthAnalysisService>();
 
 // ── Agent ─────────────────────────────────────────────────────────────────────
 builder.Services.AddScoped<SystemPromptBuilder>();

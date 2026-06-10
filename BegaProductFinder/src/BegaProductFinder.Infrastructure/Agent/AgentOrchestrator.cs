@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
+using BegaProductFinder.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -29,6 +30,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private readonly IEmbeddingService _embedding;
     private readonly IVectorSearchService _vectorSearch;
     private readonly SystemPromptBuilder _promptBuilder;
+    private readonly DepthAnalysisService _depthAnalysis;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     private readonly string _apiKey;
@@ -65,6 +67,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         IEmbeddingService embedding,
         IVectorSearchService vectorSearch,
         SystemPromptBuilder promptBuilder,
+        DepthAnalysisService depthAnalysis,
         IConfiguration config,
         ILogger<AgentOrchestrator> logger)
     {
@@ -78,6 +81,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         _embedding = embedding;
         _vectorSearch = vectorSearch;
         _promptBuilder = promptBuilder;
+        _depthAnalysis = depthAnalysis;
         _logger = logger;
 
         _apiKey = config["Anthropic:ApiKey"]
@@ -141,9 +145,23 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         foreach (var msg in history)
             apiMessages.Add(TextMessage(msg.Role, msg.Content));
 
+        // When an image is present, request a depth map from the local Depth Anything V2 sidecar.
+        // The depth map gives Claude explicit surface-distance information so placement markers
+        // land on physical surfaces rather than sky or mid-air regions.
+        string? depthMapBase64 = null;
+        if (imageBase64 is not null)
+        {
+            depthMapBase64 = await _depthAnalysis.GetDepthMapBase64Async(imageBase64, ct);
+            if (depthMapBase64 is not null)
+                _logger.LogDebug("Depth map acquired ({Chars} base64 chars) — sending two-image vision request", depthMapBase64.Length);
+            else
+                _logger.LogDebug("Depth analysis unavailable — sending single-image vision request");
+        }
+
         // When an image is present, build a content-block array message (vision turn).
+        // When a depth map is also available, include it as a second labeled image block.
         // Otherwise fall back to a plain text string (standard turn, no extra tokens).
-        apiMessages.Add(BuildUserMessage(userMessage, imageBase64, imageMimeType));
+        apiMessages.Add(BuildUserMessage(userMessage, imageBase64, imageMimeType, depthMapBase64));
 
         var systemPrompt = _promptBuilder.Build();
         var tools = _toolDefinitions;
@@ -806,15 +824,64 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     };
 
     /// <summary>
-    /// Builds the current user message. When an image is attached, produces a content-block
-    /// array with an image block followed by the text block (Claude vision format).
-    /// When no image is present, returns a plain string content to minimise tokens.
+    /// Builds the current user message.
+    /// <list type="bullet">
+    ///   <item>No image → plain text string (minimal tokens).</item>
+    ///   <item>Image only → [image, text] content blocks.</item>
+    ///   <item>Image + depth map → [label, original image, label, depth map, text] blocks.
+    ///         Labels tell Claude which image is which so it can correlate depth values
+    ///         with scene regions when computing placement-map coordinates.</item>
+    /// </list>
     /// </summary>
-    private static JsonObject BuildUserMessage(string text, string? imageBase64, string? imageMimeType)
+    private static JsonObject BuildUserMessage(
+        string text,
+        string? imageBase64,
+        string? imageMimeType,
+        string? depthMapBase64 = null)
     {
         if (imageBase64 is null || imageMimeType is null)
             return TextMessage("user", text);
 
+        // Two-image vision turn: original scene + depth map
+        if (depthMapBase64 is not null)
+        {
+            return new JsonObject
+            {
+                ["role"] = "user",
+                ["content"] = new JsonArray
+                {
+                    new JsonObject { ["type"] = "text", ["text"] = "IMAGE 1 — Original scene:" },
+                    new JsonObject
+                    {
+                        ["type"] = "image",
+                        ["source"] = new JsonObject
+                        {
+                            ["type"]       = "base64",
+                            ["media_type"] = imageMimeType,
+                            ["data"]       = imageBase64
+                        }
+                    },
+                    new JsonObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = "IMAGE 2 — Depth map (light/white pixels = surfaces CLOSE to camera; dark/black pixels = surfaces FAR from camera or open sky):"
+                    },
+                    new JsonObject
+                    {
+                        ["type"] = "image",
+                        ["source"] = new JsonObject
+                        {
+                            ["type"]       = "base64",
+                            ["media_type"] = "image/png",
+                            ["data"]       = depthMapBase64
+                        }
+                    },
+                    new JsonObject { ["type"] = "text", ["text"] = text }
+                }
+            };
+        }
+
+        // Single-image vision turn
         return new JsonObject
         {
             ["role"] = "user",
@@ -830,11 +897,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                         ["data"]       = imageBase64
                     }
                 },
-                new JsonObject
-                {
-                    ["type"] = "text",
-                    ["text"] = text
-                }
+                new JsonObject { ["type"] = "text", ["text"] = text }
             }
         };
     }
