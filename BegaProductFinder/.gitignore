@@ -23,6 +23,7 @@ publish/
 frontend/node_modules/
 frontend/.next/
 frontend/out/
+frontend/deploy/
 frontend/.env.local
 frontend/.env.*.local
 
