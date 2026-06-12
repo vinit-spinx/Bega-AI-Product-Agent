@@ -53,10 +53,11 @@ var host = Host.CreateDefaultBuilder(args)
     {
         var config = ctx.Configuration;
 
-        // ── EF Core — SQL Server ─────────────────────────────────────────────
+        // ── EF Core — PostgreSQL ─────────────────────────────────────────────
         services.AddDbContext<AppDbContext>(opt =>
-            opt.UseSqlServer(config.GetConnectionString("SqlServer")
-                ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.")));
+            opt.UseNpgsql(config.GetConnectionString("Database")
+                ?? throw new InvalidOperationException("ConnectionStrings:Database is required."))
+               .UseLowerCaseNamingConvention());
 
         // ── Ingestion options ────────────────────────────────────────────────
         services.Configure<IngestionOptions>(config.GetSection(IngestionOptions.SectionName));
@@ -128,8 +129,8 @@ var host = Host.CreateDefaultBuilder(args)
         // ── Vector search ────────────────────────────────────────────────────
         services.AddSingleton<VectorDbContext>(sp =>
         {
-            var connStr = config.GetConnectionString("VectorDb")
-                ?? throw new InvalidOperationException("ConnectionStrings:VectorDb is required.");
+            var connStr = config.GetConnectionString("Database")
+                ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
             var dimensions = config.GetValue<int>("Embeddings:Dimensions", 768);
             return new VectorDbContext(connStr, dimensions);
         });

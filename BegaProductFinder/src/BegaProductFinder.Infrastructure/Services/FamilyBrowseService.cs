@@ -1,7 +1,7 @@
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
 using Dapper;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -18,8 +18,8 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
 
     public FamilyBrowseService(IConfiguration config, ILogger<FamilyBrowseService> logger)
     {
-        _connectionString = config.GetConnectionString("SqlServer")
-            ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
+        _connectionString = config.GetConnectionString("Database")
+            ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
         _logger = logger;
     }
 
@@ -35,7 +35,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var results = await conn.QueryAsync<string>(
                 new CommandDefinition(sql, cancellationToken: ct));
             return results.ToList();
@@ -69,7 +69,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var results = await conn.QueryAsync<string>(
                 new CommandDefinition(sql, new { Category = category }, cancellationToken: ct));
             return results.ToList();
@@ -108,7 +108,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var results = await conn.QueryAsync<FamilyBrowseResult>(
                 new CommandDefinition(sql, new { Category = category, Group = group }, cancellationToken: ct));
             return results.ToList();
@@ -137,7 +137,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
                 p.DimensionC, p.DimensionCFraction,
                 p.DnpPrice, p.MsrpPrice,
                 p.SpecDocumentUrl, p.TechnicalDocumentUrl,
-                0.0 AS MatchScore
+                0.0::float8 AS MatchScore
             FROM Products p
             WHERE p.FamilySlug = @FamilySlug
             ORDER BY p.CatalogNumber
@@ -145,7 +145,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var results = (await conn.QueryAsync<ProductSearchResult>(
                 new CommandDefinition(sql, new { FamilySlug = familySlug }, cancellationToken: ct))).ToList();
             if (results.Count > 0)
@@ -165,7 +165,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
     private record ProjectRow(int ProductId, string? Name, string? Location, string? ListingImage, string? Slug);
 
     private static async Task<Dictionary<int, List<ProductProjectDto>>> FetchProjectsAsync(
-        SqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
+        NpgsqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
     {
         if (productIds.Length == 0) return [];
         const string sql = """
@@ -174,7 +174,7 @@ public sealed class FamilyBrowseService : IFamilyBrowseService
                 SELECT ProductId, Name, Location, ListingImage, Slug,
                        ROW_NUMBER() OVER (PARTITION BY ProductId ORDER BY SortOrder) AS rn
                 FROM ProductProjects
-                WHERE ProductId IN @Ids
+                WHERE ProductId = ANY(@Ids)
             ) t
             WHERE rn <= @Max
             """;

@@ -12,7 +12,6 @@ public sealed class ContactInquiryConfiguration : IEntityTypeConfiguration<Conta
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ContactInquiry> builder)
     {
-        builder.ToTable("ContactInquiries");
         builder.HasKey(c => c.InquiryId);
 
         builder.Property(c => c.SessionId)
@@ -28,11 +27,10 @@ public sealed class ContactInquiryConfiguration : IEntityTypeConfiguration<Conta
                .IsRequired();
 
         builder.Property(c => c.Query)
-               .HasColumnType("nvarchar(max)")
                .IsRequired();
 
         builder.Property(c => c.CreatedAt)
-               .HasDefaultValueSql("GETUTCDATE()")
+               .HasDefaultValueSql("NOW()")
                .ValueGeneratedOnAdd();
 
         // Fast lookup of all inquiries for a session

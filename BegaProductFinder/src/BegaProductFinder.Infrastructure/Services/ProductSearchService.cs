@@ -1,14 +1,14 @@
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
 using Dapper;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace BegaProductFinder.Infrastructure.Services;
 
 /// <summary>
-/// Hybrid product search combining pgvector semantic similarity with SQL Server structured filtering.
+/// Hybrid product search combining pgvector semantic similarity with PostgreSQL structured filtering.
 /// The search flow for <see cref="SearchByNaturalLanguageAsync"/>:
 /// <list type="number">
 /// <item><description>Embed the query via <see cref="IEmbeddingService"/></description></item>
@@ -40,8 +40,8 @@ public sealed class ProductSearchService : IProductSearchService
     {
         _embedding = embedding;
         _vectorSearch = vectorSearch;
-        _connectionString = config.GetConnectionString("SqlServer")
-            ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
+        _connectionString = config.GetConnectionString("Database")
+            ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
         _logger = logger;
     }
 
@@ -217,7 +217,7 @@ public sealed class ProductSearchService : IProductSearchService
 
         if (diverse.Count > 0)
         {
-            await using var projectConn = new SqlConnection(_connectionString);
+            await using var projectConn = new NpgsqlConnection(_connectionString);
             var projectMap = await FetchProjectsAsync(projectConn, diverse.Select(p => p.ProductId).ToArray(), ct);
             return diverse.Select(p => p with { Projects = ProjectsFor(projectMap, p.ProductId) }).ToList();
         }
@@ -285,7 +285,7 @@ public sealed class ProductSearchService : IProductSearchService
                 DimensionC, DimensionCFraction,
                 DnpPrice, MsrpPrice,
                 SpecDocumentUrl, TechnicalDocumentUrl,
-                0.0 AS MatchScore
+                0.0::float8 AS MatchScore
             FROM Products
             WHERE {string.Join(" AND ", conditions)}
             ORDER BY LumenOutputLm DESC, WattageW ASC
@@ -293,7 +293,7 @@ public sealed class ProductSearchService : IProductSearchService
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var results = (await conn.QueryAsync<ProductSearchResult>(
                 new CommandDefinition(sql, parameters, cancellationToken: ct))).ToList();
             if (results.Count > 0)
@@ -333,7 +333,7 @@ public sealed class ProductSearchService : IProductSearchService
                 p.ExtraInfo, p.ProductOptionsJson,
                 p.ProductTechnicalSpec, p.FamilyExtraInfo, p.AIEnrichmentJson,
                 p.SpecDocumentUrl, p.TechnicalDocumentUrl,
-                0.0 AS MatchScore
+                0.0::float8 AS MatchScore
             FROM Products p
             WHERE p.CatalogNumber = @CatalogNumber
             """;
@@ -347,7 +347,7 @@ public sealed class ProductSearchService : IProductSearchService
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var detail = await conn.QueryFirstOrDefaultAsync<ProductDetail>(
                 new CommandDefinition(sql, new { CatalogNumber = catalogNumber }, cancellationToken: ct));
 
@@ -382,23 +382,23 @@ public sealed class ProductSearchService : IProductSearchService
         ProductSearchFilters filters,
         CancellationToken ct)
     {
-        var conditions = new List<string> { "p.ProductId IN @Ids" };
+        var conditions = new List<string> { "p.ProductId = ANY(@Ids)" };
         var parameters = new DynamicParameters();
         parameters.Add("Ids", productIds);
 
         if (filters.Category is not null)
         {
-            conditions.Add("p.CategoryName = @Category");
+            conditions.Add("p.CategoryName ILIKE @Category");
             parameters.Add("Category", filters.Category);
         }
         if (filters.Group is not null)
         {
-            conditions.Add("p.GroupsName = @Group");
+            conditions.Add("p.GroupsName ILIKE @Group");
             parameters.Add("Group", filters.Group);
         }
         if (filters.FamilyName is not null)
         {
-            conditions.Add("p.FamilyName = @FamilyName");
+            conditions.Add("p.FamilyName ILIKE @FamilyName");
             parameters.Add("FamilyName", filters.FamilyName);
         }
         if (filters.MinWattageW.HasValue)
@@ -433,49 +433,49 @@ public sealed class ProductSearchService : IProductSearchService
         }
         if (filters.ColorTemperatureK.HasValue)
         {
-            conditions.Add("p.ColorTemperatureJson LIKE @CctPattern");
+            conditions.Add("p.ColorTemperatureJson ILIKE @CctPattern");
             parameters.Add("CctPattern", $"%\"kelvin\":{filters.ColorTemperatureK.Value}%");
         }
         if (filters.Voltage is not null)
         {
-            conditions.Add("p.Voltage LIKE @Voltage");
+            conditions.Add("p.Voltage ILIKE @Voltage");
             parameters.Add("Voltage", $"%{filters.Voltage}%");
         }
         if (filters.ControlProtocol is not null)
         {
-            // LIKE so "DALI" matches "DALI-2"; "0-10V" matches exactly; etc.
-            conditions.Add("p.ControlProtocol LIKE @ControlProtocol");
+            // ILIKE so "DALI" matches "DALI-2"; "0-10V" matches exactly; etc.
+            conditions.Add("p.ControlProtocol ILIKE @ControlProtocol");
             parameters.Add("ControlProtocol", $"%{filters.ControlProtocol}%");
         }
         if (filters.Application is not null)
         {
             // DB values: Accent · Emergency · Facade · Pathway · Roadway · Site & Area · Unshielded
-            conditions.Add("p.Application LIKE @Application");
+            conditions.Add("p.Application ILIKE @Application");
             parameters.Add("Application", $"%{filters.Application}%");
         }
         if (filters.Distribution is not null)
         {
             // DB values: Type I · Type II · Type III · Type IV · Type V
-            conditions.Add("p.Distribution LIKE @Distribution");
+            conditions.Add("p.Distribution ILIKE @Distribution");
             parameters.Add("Distribution", $"%{filters.Distribution}%");
         }
         if (filters.DynamicLight is not null)
         {
             // DB values: RGBW · Tunable White
-            conditions.Add("p.DynamicLight LIKE @DynamicLight");
+            conditions.Add("p.DynamicLight ILIKE @DynamicLight");
             parameters.Add("DynamicLight", $"%{filters.DynamicLight}%");
         }
         if (filters.Compliance is not null)
         {
             // Maps to SocialEnviornmentalHealth column
             // DB values: International Dark Sky · Wildlife Friendly · EPD Available · FSC certified wood
-            conditions.Add("p.SocialEnviornmentalHealth LIKE @Compliance");
+            conditions.Add("p.SocialEnviornmentalHealth ILIKE @Compliance");
             parameters.Add("Compliance", $"%{filters.Compliance}%");
         }
         if (filters.AdaCompliant == true)
-            conditions.Add("p.IsAdaCompliant = 1");
+            conditions.Add("p.IsAdaCompliant = true");
         if (filters.ExpressDelivery == true)
-            conditions.Add("p.IsExpressDelivery = 1");
+            conditions.Add("p.IsExpressDelivery = true");
         if (filters.MinDnpPrice.HasValue)
         {
             conditions.Add("p.DnpPrice IS NOT NULL AND p.DnpPrice >= @MinDnpPrice");
@@ -489,7 +489,7 @@ public sealed class ProductSearchService : IProductSearchService
         }
         if (filters.ExcludedCatalogNumbers is { Length: > 0 })
         {
-            conditions.Add("p.CatalogNumber NOT IN @ExcludedCatalogNumbers");
+            conditions.Add("NOT (p.CatalogNumber = ANY(@ExcludedCatalogNumbers))");
             parameters.Add("ExcludedCatalogNumbers", filters.ExcludedCatalogNumbers);
         }
 
@@ -505,20 +505,28 @@ public sealed class ProductSearchService : IProductSearchService
                 p.DimensionC, p.DimensionCFraction,
                 p.DnpPrice, p.MsrpPrice,
                 p.SpecDocumentUrl, p.TechnicalDocumentUrl,
-                0.0 AS MatchScore
+                0.0::float8 AS MatchScore
             FROM Products p
             WHERE {string.Join(" AND ", conditions)}
             """;
 
-        await using var conn = new SqlConnection(_connectionString);
-        var results = await conn.QueryAsync<ProductSearchResult>(
-            new CommandDefinition(sql, parameters, cancellationToken: ct));
-        return results.ToList();
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            var results = await conn.QueryAsync<ProductSearchResult>(
+                new CommandDefinition(sql, parameters, cancellationToken: ct));
+            return results.ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FetchProductsFromSqlAsync failed. SQL={Sql}", sql);
+            throw;
+        }
     }
 
     private async Task<int[]> GetProductIdsByGroupAsync(string groupName, CancellationToken ct)
     {
-        await using var conn = new SqlConnection(_connectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         var ids = await conn.QueryAsync<int>(
             new CommandDefinition(
                 "SELECT ProductId FROM Products WHERE GroupsName = @GroupName",
@@ -533,7 +541,7 @@ public sealed class ProductSearchService : IProductSearchService
         int topK,
         CancellationToken ct)
     {
-        await using var conn = new SqlConnection(_connectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
 
         // Structured filter conditions carried from the original request.
         // These MUST be preserved in the fallback — dropping them causes wrong products
@@ -543,42 +551,42 @@ public sealed class ProductSearchService : IProductSearchService
 
         if (!string.IsNullOrWhiteSpace(filters.Category))
         {
-            structuredConditions.Add("CategoryName = @Category");
+            structuredConditions.Add("CategoryName ILIKE @Category");
             structuredParams.Add("Category", filters.Category);
         }
         if (!string.IsNullOrWhiteSpace(filters.ControlProtocol))
         {
-            structuredConditions.Add("ControlProtocol LIKE @ControlProtocol");
+            structuredConditions.Add("ControlProtocol ILIKE @ControlProtocol");
             structuredParams.Add("ControlProtocol", $"%{filters.ControlProtocol}%");
         }
         if (!string.IsNullOrWhiteSpace(filters.Voltage))
         {
-            structuredConditions.Add("Voltage LIKE @Voltage");
+            structuredConditions.Add("Voltage ILIKE @Voltage");
             structuredParams.Add("Voltage", $"%{filters.Voltage}%");
         }
         if (!string.IsNullOrWhiteSpace(filters.Application))
         {
-            structuredConditions.Add("Application LIKE @Application");
+            structuredConditions.Add("Application ILIKE @Application");
             structuredParams.Add("Application", $"%{filters.Application}%");
         }
         if (!string.IsNullOrWhiteSpace(filters.Distribution))
         {
-            structuredConditions.Add("Distribution LIKE @Distribution");
+            structuredConditions.Add("Distribution ILIKE @Distribution");
             structuredParams.Add("Distribution", $"%{filters.Distribution}%");
         }
         if (!string.IsNullOrWhiteSpace(filters.DynamicLight))
         {
-            structuredConditions.Add("DynamicLight LIKE @DynamicLight");
+            structuredConditions.Add("DynamicLight ILIKE @DynamicLight");
             structuredParams.Add("DynamicLight", $"%{filters.DynamicLight}%");
         }
         if (!string.IsNullOrWhiteSpace(filters.Compliance))
         {
-            structuredConditions.Add("SocialEnviornmentalHealth LIKE @Compliance");
+            structuredConditions.Add("SocialEnviornmentalHealth ILIKE @Compliance");
             structuredParams.Add("Compliance", $"%{filters.Compliance}%");
         }
         if (filters.ColorTemperatureK.HasValue)
         {
-            structuredConditions.Add("ColorTemperatureJson LIKE @CctPattern");
+            structuredConditions.Add("ColorTemperatureJson ILIKE @CctPattern");
             structuredParams.Add("CctPattern", $"%\"kelvin\":{filters.ColorTemperatureK.Value}%");
         }
         if (filters.MinLumenOutput.HasValue)
@@ -612,9 +620,9 @@ public sealed class ProductSearchService : IProductSearchService
             structuredParams.Add("MaxBeamAngleDeg", filters.MaxBeamAngleDeg.Value);
         }
         if (filters.AdaCompliant == true)
-            structuredConditions.Add("IsAdaCompliant = 1");
+            structuredConditions.Add("IsAdaCompliant = true");
         if (filters.ExpressDelivery == true)
-            structuredConditions.Add("IsExpressDelivery = 1");
+            structuredConditions.Add("IsExpressDelivery = true");
         if (filters.MinDnpPrice.HasValue)
         {
             structuredConditions.Add("DnpPrice IS NOT NULL AND DnpPrice >= @MinDnpPrice");
@@ -627,7 +635,7 @@ public sealed class ProductSearchService : IProductSearchService
         }
         if (filters.ExcludedCatalogNumbers is { Length: > 0 })
         {
-            structuredConditions.Add("CatalogNumber NOT IN @ExcludedCatalogNumbers");
+            structuredConditions.Add("NOT (CatalogNumber = ANY(@ExcludedCatalogNumbers))");
             structuredParams.Add("ExcludedCatalogNumbers", filters.ExcludedCatalogNumbers);
         }
 
@@ -646,11 +654,11 @@ public sealed class ProductSearchService : IProductSearchService
         if (words.Count > 0)
         {
             var wordConditions = words
-                .Select((_, i) => $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} OR GroupsName LIKE @w{i} OR LuminaireType LIKE @w{i} OR Application LIKE @w{i} OR ExtraInfo LIKE @w{i} OR ProductTechnicalSpec LIKE @w{i} OR FamilyExtraInfo LIKE @w{i} OR AIEnrichmentJson LIKE @w{i})")
+                .Select((_, i) => $"(FamilyName ILIKE @w{i} OR SubFamilyName ILIKE @w{i} OR GroupsName ILIKE @w{i} OR LuminaireType ILIKE @w{i} OR Application ILIKE @w{i} OR ExtraInfo ILIKE @w{i} OR ProductTechnicalSpec ILIKE @w{i} OR FamilyExtraInfo ILIKE @w{i} OR AIEnrichmentJson ILIKE @w{i})")
                 .ToList();
 
             var wordSql = $"""
-                SELECT TOP (@TopK)
+                SELECT
                     ProductId, CatalogNumber, FamilyName, FamilySlug, SubFamilyName,
                     CategoryName, GroupSlug, GroupsName, LuminaireType,
                     FamilyListPageImage, FamilyTechImage,
@@ -661,12 +669,13 @@ public sealed class ProductSearchService : IProductSearchService
                     DimensionC, DimensionCFraction,
                     DnpPrice, MsrpPrice,
                     SpecDocumentUrl, TechnicalDocumentUrl,
-                    0.0 AS MatchScore
+                    0.0::float8 AS MatchScore
                 FROM Products
                 WHERE ({string.Join(" OR ", wordConditions)})
-                  AND (GroupSlug NOT IN @FurnitureSlugs OR GroupSlug IS NULL)
+                  AND (GroupSlug IS NULL OR NOT (GroupSlug = ANY(@FurnitureSlugs)))
                   {structuredClause}
                 ORDER BY CatalogNumber
+                LIMIT @TopK
                 """;
 
             structuredParams.Add("TopK", topK);
@@ -702,7 +711,7 @@ public sealed class ProductSearchService : IProductSearchService
 
         var words2 = words.Count > 0 ? words : [query];
         var broadConditions = words2
-            .Select((_, i) => $"(FamilyName LIKE @b{i} OR GroupsName LIKE @b{i} OR LuminaireType LIKE @b{i} OR ProductTechnicalSpec LIKE @b{i} OR FamilyExtraInfo LIKE @b{i} OR AIEnrichmentJson LIKE @b{i})")
+            .Select((_, i) => $"(FamilyName ILIKE @b{i} OR GroupsName ILIKE @b{i} OR LuminaireType ILIKE @b{i} OR ProductTechnicalSpec ILIKE @b{i} OR FamilyExtraInfo ILIKE @b{i} OR AIEnrichmentJson ILIKE @b{i})")
             .ToList();
         for (int i = 0; i < words2.Count; i++)
             broadParams.Add($"b{i}", $"%{words2[i]}%");
@@ -710,12 +719,12 @@ public sealed class ProductSearchService : IProductSearchService
         var broadExclusionClause = string.Empty;
         if (filters.ExcludedCatalogNumbers is { Length: > 0 })
         {
-            broadExclusionClause = "AND CatalogNumber NOT IN @ExcludedCatalogNumbers";
+            broadExclusionClause = "AND NOT (CatalogNumber = ANY(@ExcludedCatalogNumbers))";
             broadParams.Add("ExcludedCatalogNumbers", filters.ExcludedCatalogNumbers);
         }
 
         var broadSql = $"""
-            SELECT TOP (@TopK)
+            SELECT
                 ProductId, CatalogNumber, FamilyName, FamilySlug, SubFamilyName,
                 CategoryName, GroupSlug, GroupsName, LuminaireType,
                 FamilyListPageImage, FamilyTechImage,
@@ -726,12 +735,13 @@ public sealed class ProductSearchService : IProductSearchService
                 DimensionC, DimensionCFraction,
                 DnpPrice, MsrpPrice,
                 SpecDocumentUrl, TechnicalDocumentUrl,
-                0.0 AS MatchScore
+                0.0::float8 AS MatchScore
             FROM Products
             WHERE ({string.Join(" OR ", broadConditions)})
-              AND (GroupSlug NOT IN @FurnitureSlugs OR GroupSlug IS NULL)
+              AND (GroupSlug IS NULL OR NOT (GroupSlug = ANY(@FurnitureSlugs)))
               {broadExclusionClause}
             ORDER BY CatalogNumber
+            LIMIT @TopK
             """;
 
         var broadResults = (await conn.QueryAsync<ProductSearchResult>(
@@ -752,7 +762,7 @@ public sealed class ProductSearchService : IProductSearchService
     /// Uses ROW_NUMBER() so the database does the per-product limiting rather than client-side filtering.
     /// </summary>
     private static async Task<Dictionary<int, List<ProductProjectDto>>> FetchProjectsAsync(
-        SqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
+        NpgsqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
     {
         if (productIds.Length == 0) return [];
         const string sql = """
@@ -761,7 +771,7 @@ public sealed class ProductSearchService : IProductSearchService
                 SELECT ProductId, Name, Location, ListingImage, Slug,
                        ROW_NUMBER() OVER (PARTITION BY ProductId ORDER BY SortOrder) AS rn
                 FROM ProductProjects
-                WHERE ProductId IN @Ids
+                WHERE ProductId = ANY(@Ids)
             ) t
             WHERE rn <= @Max
             """;

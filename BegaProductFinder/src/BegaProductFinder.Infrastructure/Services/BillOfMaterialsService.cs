@@ -1,7 +1,7 @@
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
 using Dapper;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -19,8 +19,8 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
 
     public BillOfMaterialsService(IConfiguration config, ILogger<BillOfMaterialsService> logger)
     {
-        _connectionString = config.GetConnectionString("SqlServer")
-            ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
+        _connectionString = config.GetConnectionString("Database")
+            ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
         _logger = logger;
     }
 
@@ -56,13 +56,13 @@ public sealed class BillOfMaterialsService : IBillOfMaterialsService
                 MsrpPrice,
                 SystemWattageW
             FROM Products
-            WHERE CatalogNumber IN @CatalogNumbers
+            WHERE CatalogNumber = ANY(@CatalogNumbers)
             """;
 
         Dictionary<string, ProductPricingRow> pricing;
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var rows = await conn.QueryAsync<ProductPricingRow>(
                 new CommandDefinition(sql, new { CatalogNumbers = catalogNumbers }, cancellationToken: ct));
             pricing = rows.ToDictionary(r => r.CatalogNumber, StringComparer.OrdinalIgnoreCase);

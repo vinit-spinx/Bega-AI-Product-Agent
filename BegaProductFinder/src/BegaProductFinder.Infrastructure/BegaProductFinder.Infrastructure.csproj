@@ -14,20 +14,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Entity Framework Core + SQL Server -->
+    <!-- Entity Framework Core + PostgreSQL (Npgsql) -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="EFCore.NamingConventions" Version="8.0.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.11">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
 
-    <!-- Dapper + SQL client for read-heavy queries -->
+    <!-- Dapper + PostgreSQL client for read-heavy queries -->
     <PackageReference Include="Dapper" Version="2.1.35" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
-
-    <!-- PostgreSQL + pgvector (local vector search) -->
-    <PackageReference Include="Npgsql" Version="8.0.5" />
+    <PackageReference Include="Npgsql" Version="8.0.6" />
     <PackageReference Include="Pgvector" Version="0.2.0" />
 
     <!-- PDF spec sheet extraction -->

@@ -15,14 +15,13 @@ public sealed class ChatSessionConfiguration : IEntityTypeConfiguration<ChatSess
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ChatSession> builder)
     {
-        builder.ToTable("ChatSessions");
         builder.HasKey(s => s.SessionId);
 
         // Client always supplies the UUID — do not generate server-side
         builder.Property(s => s.SessionId).ValueGeneratedNever();
 
         builder.Property(s => s.CreatedAt)
-               .HasDefaultValueSql("GETUTCDATE()")
+               .HasDefaultValueSql("NOW()")
                .ValueGeneratedOnAdd();
 
         builder.Property(s => s.LastActivityAt).IsRequired();

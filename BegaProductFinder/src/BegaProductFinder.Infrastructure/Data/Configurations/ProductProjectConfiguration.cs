@@ -13,13 +13,12 @@ public sealed class ProductProjectConfiguration : IEntityTypeConfiguration<Produ
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ProductProject> builder)
     {
-        builder.ToTable("ProductProjects");
         builder.HasKey(p => p.ProjectId);
         builder.Property(p => p.ProjectId).UseIdentityColumn();
 
         builder.Property(p => p.ProductId).IsRequired();
         builder.Property(p => p.Name).IsRequired().HasMaxLength(500);
-        builder.Property(p => p.Description).HasColumnType("nvarchar(max)");
+        builder.Property(p => p.Description);
         builder.Property(p => p.Tags).HasMaxLength(500);
         builder.Property(p => p.Slug).HasMaxLength(1000);
         builder.Property(p => p.Location).HasMaxLength(500);

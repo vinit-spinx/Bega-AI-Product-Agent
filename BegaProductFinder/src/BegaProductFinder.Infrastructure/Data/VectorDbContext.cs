@@ -22,7 +22,7 @@ public sealed class VectorDbContext : IDisposable
     /// <summary>
     /// Initialises the Npgsql data source with pgvector type support registered.
     /// </summary>
-    /// <param name="connectionString">PostgreSQL connection string from <c>ConnectionStrings:VectorDb</c>.</param>
+    /// <param name="connectionString">PostgreSQL connection string from <c>ConnectionStrings:Database</c>.</param>
     /// <param name="dimensions">Embedding dimension count — must match the ingestion embedding model.</param>
     public VectorDbContext(string connectionString, int dimensions)
     {

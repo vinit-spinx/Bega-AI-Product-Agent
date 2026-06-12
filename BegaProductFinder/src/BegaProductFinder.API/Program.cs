@@ -31,12 +31,12 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new() { Title = "BEGA AI Product Finder API", Version = "v1" });
 });
 
-// ── EF Core — SQL Server ──────────────────────────────────────────────────────
-var sqlConnStr = config.GetConnectionString("SqlServer")
-    ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
+// ── EF Core — PostgreSQL ──────────────────────────────────────────────────────
+var sqlConnStr = config.GetConnectionString("Database")
+    ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(sqlConnStr));
+    options.UseNpgsql(sqlConnStr).UseLowerCaseNamingConvention());
 
 // ── HTTP clients ──────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("Anthropic", client =>

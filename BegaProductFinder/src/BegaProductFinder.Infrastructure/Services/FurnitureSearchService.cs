@@ -1,7 +1,7 @@
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
 using Dapper;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -44,8 +44,8 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         IConfiguration config,
         ILogger<FurnitureSearchService> logger)
     {
-        _connectionString = config.GetConnectionString("SqlServer")
-            ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
+        _connectionString = config.GetConnectionString("Database")
+            ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
         _logger = logger;
     }
 
@@ -100,7 +100,7 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         int topK,
         CancellationToken ct)
     {
-        var conditions = new List<string> { "GroupSlug IN @FurnitureSlugs" };
+        var conditions = new List<string> { "GroupSlug = ANY(@FurnitureSlugs)" };
         var parameters = new DynamicParameters();
         parameters.Add("FurnitureSlugs", FurnitureGroupSlugs);
         parameters.Add("TopK", topK);
@@ -110,9 +110,9 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
             // Each word is searched across all descriptive columns (OR within word, AND across words)
             var wordConditions = words
                 .Select((_, i) =>
-                    $"(FamilyName LIKE @w{i} OR SubFamilyName LIKE @w{i} " +
-                    $"OR GroupsName LIKE @w{i} OR ExtraInfo LIKE @w{i} " +
-                    $"OR ProductTechnicalSpec LIKE @w{i} OR FamilyExtraInfo LIKE @w{i} OR AIEnrichmentJson LIKE @w{i})")
+                    $"(FamilyName ILIKE @w{i} OR SubFamilyName ILIKE @w{i} " +
+                    $"OR GroupsName ILIKE @w{i} OR ExtraInfo ILIKE @w{i} " +
+                    $"OR ProductTechnicalSpec ILIKE @w{i} OR FamilyExtraInfo ILIKE @w{i} OR AIEnrichmentJson ILIKE @w{i})")
                 .ToList();
             conditions.Add($"({string.Join(" OR ", wordConditions)})");
             for (int i = 0; i < words.Count; i++)
@@ -120,19 +120,19 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
         }
         else if (!string.IsNullOrWhiteSpace(query))
         {
-            conditions.Add("(FamilyName LIKE @Query OR SubFamilyName LIKE @Query OR ExtraInfo LIKE @Query OR ProductTechnicalSpec LIKE @Query OR FamilyExtraInfo LIKE @Query OR AIEnrichmentJson LIKE @Query)");
+            conditions.Add("(FamilyName ILIKE @Query OR SubFamilyName ILIKE @Query OR ExtraInfo ILIKE @Query OR ProductTechnicalSpec ILIKE @Query OR FamilyExtraInfo ILIKE @Query OR AIEnrichmentJson ILIKE @Query)");
             parameters.Add("Query", $"%{query}%");
         }
 
         if (furnitureType is not null)
         {
-            conditions.Add("GroupsName LIKE @FurnitureType");
+            conditions.Add("GroupsName ILIKE @FurnitureType");
             parameters.Add("FurnitureType", $"%{furnitureType}%");
         }
 
         if (material is not null)
         {
-            conditions.Add("(Finish LIKE @Material OR ExtraInfo LIKE @Material OR ProductTechnicalSpec LIKE @Material OR FamilyExtraInfo LIKE @Material)");
+            conditions.Add("(Finish ILIKE @Material OR ExtraInfo ILIKE @Material OR ProductTechnicalSpec ILIKE @Material OR FamilyExtraInfo ILIKE @Material)");
             parameters.Add("Material", $"%{material}%");
         }
 
@@ -143,27 +143,28 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
 
         if (excludedCatalogNumbers is { Length: > 0 })
         {
-            conditions.Add("CatalogNumber NOT IN @ExcludedCatalogNumbers");
+            conditions.Add("NOT (CatalogNumber = ANY(@ExcludedCatalogNumbers))");
             parameters.Add("ExcludedCatalogNumbers", excludedCatalogNumbers);
         }
 
         var sql = $"""
-            SELECT TOP (@TopK)
+            SELECT
                 ProductId, CatalogNumber, FamilyName, SubFamilyName, GroupsName, CategoryName,
                 FamilyListPageImage, Application, Finish, LeadTime,
                 DimensionA, DimensionAFraction, DimensionB, DimensionBFraction,
                 DimensionC, DimensionCFraction, DimensionD, DimensionDFraction,
                 DimensionE, DimensionEFraction,
                 SpecDocumentUrl, TechnicalDocumentUrl,
-                0.0 AS MatchScore
+                0.0::float8 AS MatchScore
             FROM Products
             WHERE {string.Join(" AND ", conditions)}
             ORDER BY FamilyName, CatalogNumber
+            LIMIT @TopK
             """;
 
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new NpgsqlConnection(_connectionString);
             var results = (await conn.QueryAsync<FurnitureSearchResult>(
                 new CommandDefinition(sql, parameters, cancellationToken: ct))).ToList();
             if (results.Count > 0)
@@ -183,7 +184,7 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
     private record ProjectRow(int ProductId, string? Name, string? Location, string? ListingImage, string? Slug);
 
     private static async Task<Dictionary<int, List<ProductProjectDto>>> FetchProjectsAsync(
-        SqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
+        NpgsqlConnection conn, int[] productIds, CancellationToken ct, int maxPerProduct = 5)
     {
         if (productIds.Length == 0) return [];
         const string sql = """
@@ -192,7 +193,7 @@ public sealed class FurnitureSearchService : IFurnitureSearchService
                 SELECT ProductId, Name, Location, ListingImage, Slug,
                        ROW_NUMBER() OVER (PARTITION BY ProductId ORDER BY SortOrder) AS rn
                 FROM ProductProjects
-                WHERE ProductId IN @Ids
+                WHERE ProductId = ANY(@Ids)
             ) t
             WHERE rn <= @Max
             """;

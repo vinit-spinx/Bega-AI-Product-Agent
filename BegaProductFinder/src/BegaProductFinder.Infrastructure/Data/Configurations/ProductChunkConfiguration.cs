@@ -14,7 +14,6 @@ public sealed class ProductChunkConfiguration : IEntityTypeConfiguration<Product
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ProductChunk> builder)
     {
-        builder.ToTable("ProductChunks");
         builder.HasKey(c => c.ChunkId);
         builder.Property(c => c.ChunkId).UseIdentityColumn();
 
@@ -23,7 +22,7 @@ public sealed class ProductChunkConfiguration : IEntityTypeConfiguration<Product
         builder.Property(c => c.ChunkText).IsRequired();
         builder.Property(c => c.IsEmbedded).HasDefaultValue(false);
         builder.Property(c => c.VectorId).HasMaxLength(200);
-        builder.Property(c => c.CreatedAt).HasDefaultValueSql("GETUTCDATE()").ValueGeneratedOnAdd();
+        builder.Property(c => c.CreatedAt).HasDefaultValueSql("NOW()").ValueGeneratedOnAdd();
 
         builder.HasOne(c => c.Product)
                .WithMany(p => p.Chunks)

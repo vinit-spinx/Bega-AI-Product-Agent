@@ -177,28 +177,49 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         // Track dispatched tool calls to skip exact duplicates (same name + input hash)
         var dispatchedToolKeys = new HashSet<string>();
 
+        // Holds the last iteration's buffered text deltas so they can be emitted even
+        // when the loop exits because max iterations was reached without a tool-free turn.
+        List<AgentStreamChunk> lastPendingTextDeltas = [];
+
         for (int iteration = 0; iteration < _maxToolIterations; iteration++)
         {
             var accText = new StringBuilder();
             var toolCalls = new List<CollectedToolCall>();
             string? stopReason = null;
+            // Buffer text deltas — only stream them to the client on the final turn.
+            // Intermediate turns produce Claude's internal reasoning ("Let me try…") which
+            // must not be shown to the user.
+            var pendingTextDeltas = new List<AgentStreamChunk>();
 
             await foreach (var (eventChunk, toolCall, reason) in
                 StreamTurnAsync(apiMessages, systemPrompt, tools, ct))
             {
-                if (eventChunk is not null) yield return eventChunk;
+                if (eventChunk?.Type == AgentStreamEventType.TextDelta)
+                {
+                    pendingTextDeltas.Add(eventChunk);
+                    if (eventChunk.Content is not null)
+                        accText.Append(eventChunk.Content);
+                }
+                else if (eventChunk is not null)
+                {
+                    yield return eventChunk; // Error events pass through immediately
+                }
                 if (toolCall is not null) toolCalls.Add(toolCall);
                 if (reason is not null) stopReason = reason;
-
-                if (eventChunk?.Type == AgentStreamEventType.TextDelta && eventChunk.Content is not null)
-                    accText.Append(eventChunk.Content);
             }
 
             var assistantText = accText.ToString();
             finalAssistantText = assistantText;
+            lastPendingTextDeltas = pendingTextDeltas; // Keep reference in case loop exits here
 
             if (toolCalls.Count == 0 || stopReason is "max_tokens" or "stop_sequence")
+            {
+                // Final turn — emit all buffered text to the client
+                foreach (var chunk in pendingTextDeltas)
+                    yield return chunk;
+                lastPendingTextDeltas = []; // Already emitted
                 break;
+            }
 
             // Build assistant message containing text + tool use blocks
             var assistantContent = new JsonArray();
@@ -245,6 +266,11 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
             apiMessages.Add(new JsonObject { ["role"] = "user", ["content"] = toolResultsArray });
         }
+
+        // Emit text from the last iteration if the loop exited due to reaching max iterations
+        // without ever producing a tool-free turn (Claude kept calling tools every iteration).
+        foreach (var chunk in lastPendingTextDeltas)
+            yield return chunk;
 
         // Parse <suggested_actions> out of the final response text before saving to history.
         // The raw tag is streamed to the frontend as text_delta (frontend renders it as pills),

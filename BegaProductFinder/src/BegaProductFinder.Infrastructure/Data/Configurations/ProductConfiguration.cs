@@ -5,16 +5,13 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 namespace BegaProductFinder.Infrastructure.Data.Configurations;
 
 /// <summary>
-/// EF Core column mapping for the Products table.
-/// Matches the SQL Server schema defined in CLAUDE.md exactly:
-/// column types, max-lengths, indexes, and default values.
+/// EF Core column mapping for the Products table (PostgreSQL via Npgsql).
 /// </summary>
 public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 {
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<Product> builder)
     {
-        builder.ToTable("Products");
         builder.HasKey(p => p.ProductId);
         builder.Property(p => p.ProductId).UseIdentityColumn();
 
@@ -38,10 +35,10 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 
         // Electrical / photometric specs
         builder.Property(p => p.LedWattage).HasMaxLength(20);
-        builder.Property(p => p.WattageW).HasColumnType("decimal(10,4)");
-        builder.Property(p => p.SystemWattageW).HasColumnType("decimal(10,4)");
-        builder.Property(p => p.LumenOutputLm).HasColumnType("decimal(10,2)");
-        builder.Property(p => p.BeamAngleDeg).HasColumnType("decimal(10,2)");
+        builder.Property(p => p.WattageW).HasPrecision(10, 4);
+        builder.Property(p => p.SystemWattageW).HasPrecision(10, 4);
+        builder.Property(p => p.LumenOutputLm).HasPrecision(10, 2);
+        builder.Property(p => p.BeamAngleDeg).HasPrecision(10, 2);
         builder.Property(p => p.ColorTemperatureJson).HasMaxLength(500);
         builder.Property(p => p.Voltage).HasMaxLength(200);
         builder.Property(p => p.ControlProtocol).HasMaxLength(100);
@@ -69,8 +66,8 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(p => p.RatingG).HasMaxLength(20);
 
         // Pricing
-        builder.Property(p => p.DnpPrice).HasColumnType("decimal(18,4)");
-        builder.Property(p => p.MsrpPrice).HasColumnType("decimal(18,4)");
+        builder.Property(p => p.DnpPrice).HasPrecision(18, 4);
+        builder.Property(p => p.MsrpPrice).HasPrecision(18, 4);
 
         // Boolean flags with explicit SQL Server defaults
         builder.Property(p => p.IsAdaCompliant).HasDefaultValue(false);
@@ -85,12 +82,12 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(p => p.SpecDocumentUrl).IsRequired().HasMaxLength(1000);
 
         // New fields from updated BEGA JSON
-        builder.Property(p => p.ProductTechnicalSpec).HasColumnType("nvarchar(max)");
-        builder.Property(p => p.FamilyExtraInfo).HasColumnType("nvarchar(max)");
-        builder.Property(p => p.AIEnrichmentJson).HasColumnType("nvarchar(max)");
+        builder.Property(p => p.ProductTechnicalSpec);
+        builder.Property(p => p.FamilyExtraInfo);
+        builder.Property(p => p.AIEnrichmentJson);
 
         // Audit timestamps
-        builder.Property(p => p.CreatedAt).HasDefaultValueSql("GETUTCDATE()").ValueGeneratedOnAdd();
+        builder.Property(p => p.CreatedAt).HasDefaultValueSql("NOW()").ValueGeneratedOnAdd();
         builder.Property(p => p.LastUpdated).IsRequired();
 
         // Unique constraint on external BEGA id

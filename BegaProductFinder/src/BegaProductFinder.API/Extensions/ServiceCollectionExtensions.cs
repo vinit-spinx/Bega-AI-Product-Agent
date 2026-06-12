@@ -34,8 +34,8 @@ public static class ServiceCollectionExtensions
                 services
                     .AddSingleton<VectorDbContext>(sp =>
                     {
-                        var connStr = config.GetConnectionString("VectorDb")
-                            ?? throw new InvalidOperationException("ConnectionStrings:VectorDb is required.");
+                        var connStr = config.GetConnectionString("Database")
+                            ?? throw new InvalidOperationException("ConnectionStrings:Database is required.");
                         var dimensions = config.GetValue<int>("Embeddings:Dimensions", 768);
                         return new VectorDbContext(connStr, dimensions);
                     })

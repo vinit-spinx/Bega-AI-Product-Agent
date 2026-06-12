@@ -56,7 +56,12 @@ public sealed class PgVectorSearchService : IVectorSearchService
         cmd.Parameters.AddWithValue("@catalog_number", catalogNumber);
         cmd.Parameters.AddWithValue("@chunk_source", chunkSource);
         cmd.Parameters.AddWithValue("@chunk_text", chunkText);
-        cmd.Parameters.AddWithValue("@embedding", new Vector(embedding));
+        cmd.Parameters.Add(new NpgsqlParameter
+        {
+            ParameterName = "@embedding",
+            Value = new Vector(embedding),
+            DataTypeName = "vector"
+        });
         cmd.Parameters.AddWithValue("@page_number", pageNumber.HasValue ? (object)pageNumber.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@chunk_index", chunkIndex);
 
@@ -94,7 +99,12 @@ public sealed class PgVectorSearchService : IVectorSearchService
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
 
-        cmd.Parameters.AddWithValue("@query_vector", new Vector(queryVector));
+        cmd.Parameters.Add(new NpgsqlParameter
+        {
+            ParameterName = "@query_vector",
+            Value = new Vector(queryVector),
+            DataTypeName = "vector"
+        });
         cmd.Parameters.AddWithValue("@top_k", topK);
 
         if (filterProductIds is { Length: > 0 })

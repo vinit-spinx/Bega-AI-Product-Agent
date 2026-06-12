@@ -8,16 +8,16 @@ namespace BegaProductFinder.Infrastructure.Data;
 /// Design-time factory used by <c>dotnet ef migrations add</c> and <c>dotnet ef database update</c>
 /// without requiring the API host to be running.
 /// Resolution order:
-/// 1. <c>BEGA_SQL_CONNECTION</c> environment variable
-/// 2. <c>ConnectionStrings:SqlServer</c> from appsettings.Development.json (API project)
-/// 3. <c>ConnectionStrings:SqlServer</c> from appsettings.json (API project)
+/// 1. <c>BEGA_DB_CONNECTION</c> environment variable
+/// 2. <c>ConnectionStrings:Database</c> from appsettings.Development.json (API project)
+/// 3. <c>ConnectionStrings:Database</c> from appsettings.json (API project)
 /// </summary>
 public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
     /// <inheritdoc/>
     public AppDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("BEGA_SQL_CONNECTION");
+        var connectionString = Environment.GetEnvironmentVariable("BEGA_DB_CONNECTION");
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -31,16 +31,16 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
                 .AddEnvironmentVariables()
                 .Build();
 
-            connectionString = config.GetConnectionString("SqlServer");
+            connectionString = config.GetConnectionString("Database");
         }
 
         if (string.IsNullOrWhiteSpace(connectionString))
             throw new InvalidOperationException(
-                "No SQL Server connection string found. Set BEGA_SQL_CONNECTION env var or add " +
-                "ConnectionStrings:SqlServer to src/BegaProductFinder.API/appsettings.Development.json.");
+                "No PostgreSQL connection string found. Set BEGA_DB_CONNECTION env var or add " +
+                "ConnectionStrings:Database to src/BegaProductFinder.API/appsettings.Development.json.");
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseNpgsql(connectionString).UseLowerCaseNamingConvention();
 
         return new AppDbContext(optionsBuilder.Options);
     }

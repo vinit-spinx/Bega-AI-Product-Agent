@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BegaProductFinder.Infrastructure.Data;
 
 /// <summary>
-/// EF Core DbContext for SQL Server — manages Products, ProductAccessories, ProductChunks, and ChatSessions.
+/// EF Core DbContext for PostgreSQL — manages Products, ProductAccessories, ProductChunks, and ChatSessions.
 /// Entity configurations are discovered automatically via <see cref="ModelBuilder.ApplyConfigurationsFromAssembly"/>.
 /// </summary>
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)

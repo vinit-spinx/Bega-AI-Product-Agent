@@ -14,7 +14,6 @@ public sealed class ProductAccessoryConfiguration : IEntityTypeConfiguration<Pro
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ProductAccessory> builder)
     {
-        builder.ToTable("ProductAccessories");
         builder.HasKey(a => a.AccessoryId);
         builder.Property(a => a.AccessoryId).UseIdentityColumn();
 
