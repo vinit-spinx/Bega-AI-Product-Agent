@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import TourOverlay from './TourOverlay';
 
 const STORAGE_KEY = 'bega_tour_products_v1';
@@ -23,10 +23,20 @@ const ALL_STEPS = [
   },
 ];
 
-export default function ProductTour({ hasProducts }: { hasProducts: boolean }) {
+interface Props {
+  hasProducts: boolean;
+  /** Called whenever the tour activates or deactivates so the parent can gate auto-scroll. */
+  onActiveChange?: (active: boolean) => void;
+}
+
+export default function ProductTour({ hasProducts, onActiveChange }: Props) {
   const [steps, setSteps]   = useState<typeof ALL_STEPS>([]);
   const [step, setStep]     = useState(0);
   const [active, setActive] = useState(false);
+
+  // Keep a stable ref so the timeout callback never captures a stale onActiveChange.
+  const onActiveChangeRef = useRef(onActiveChange);
+  useEffect(() => { onActiveChangeRef.current = onActiveChange; }, [onActiveChange]);
 
   useEffect(() => {
     if (!hasProducts) return;
@@ -40,6 +50,7 @@ export default function ProductTour({ hasProducts }: { hasProducts: boolean }) {
         setSteps(available);
         setStep(0);
         setActive(true);
+        onActiveChangeRef.current?.(true);
       }
     }, 750);
 
@@ -48,6 +59,7 @@ export default function ProductTour({ hasProducts }: { hasProducts: boolean }) {
 
   const dismiss = () => {
     setActive(false);
+    onActiveChangeRef.current?.(false);
     if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, '1');
   };
 

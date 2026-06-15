@@ -29,8 +29,12 @@ function ChatContent() {
   const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
   const { clearAll: clearShortlist } = useShortlist();
   const bottomRef = useRef<HTMLDivElement>(null);
+  // While the product tour is active it controls its own scroll target — we must
+  // not fight it by auto-scrolling to the bottom on every new SSE message.
+  const tourActiveRef = useRef(false);
 
   useEffect(() => {
+    if (tourActiveRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -164,7 +168,10 @@ function ChatContent() {
       )}
 
       {!isEmpty && <ShortlistButton />}
-      <ProductTour hasProducts={hasProducts} />
+      <ProductTour
+        hasProducts={hasProducts}
+        onActiveChange={(active) => { tourActiveRef.current = active; }}
+      />
       <CompareDrawer />
     </div>
   );

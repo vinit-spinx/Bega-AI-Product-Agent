@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 
 const PAD = 10;          // padding around the spotlight rect
 const TIP_W = 292;       // tooltip width
-const TIP_H_EST = 150;   // estimated tooltip height for placement math
+const TIP_H_EST = 200;   // estimated tooltip height for placement math (generous to avoid overlap)
+
+// Fraction from the TOP of the scrollable container where the target element lands.
+// 0.30 = 30% from top — leaves visible context above and plenty of room below for the tooltip.
+const SCROLL_TARGET_FRACTION = 0.30;
 
 interface SpotRect { top: number; left: number; width: number; height: number }
 interface TipPos   { top: number; left: number }
@@ -36,6 +40,52 @@ function calcTipPos(r: SpotRect, vw: number, vh: number): TipPos {
   };
 }
 
+/** Walk up the DOM to find the nearest element that actually scrolls vertically. */
+function findScrollParent(el: HTMLElement): HTMLElement | null {
+  let p = el.parentElement;
+  while (p && p !== document.body) {
+    const style = getComputedStyle(p);
+    if (/auto|scroll/.test(style.overflowY) && p.scrollHeight > p.clientHeight) {
+      return p;
+    }
+    p = p.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Instantly scroll the nearest scrollable ancestor so that `el` lands at
+ * SCROLL_TARGET_FRACTION from the top of that container.
+ *
+ * We use a synchronous scrollTop assignment (not smooth) so the position is
+ * fully settled before we measure getBoundingClientRect — smooth scroll can
+ * take 700–900 ms for long distances and the measurement would fire mid-animation.
+ *
+ * Fixed/sticky elements (e.g. the shortlist button) are skipped — they are
+ * always in the viewport regardless of scroll.
+ */
+function scrollToTarget(el: HTMLElement) {
+  const pos = getComputedStyle(el).position;
+  if (pos === 'fixed' || pos === 'sticky') return;
+
+  const container = findScrollParent(el);
+  if (!container) {
+    // No scrollable ancestor — snap the window scroll instantly.
+    el.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+    return;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const elRect        = el.getBoundingClientRect();
+
+  // elOffsetTop = element's distance from the container's scrollable origin.
+  const elOffsetTop = elRect.top - containerRect.top + container.scrollTop;
+  const desired     = elOffsetTop - container.clientHeight * SCROLL_TARGET_FRACTION;
+
+  // Synchronous assignment — position is final before the next paint.
+  container.scrollTop = Math.max(0, desired);
+}
+
 interface Props {
   targetSelector: string;
   title: string;
@@ -55,7 +105,7 @@ export default function TourOverlay({
   onNext,
   onSkip,
 }: Props) {
-  const [spot, setSpot]   = useState<SpotRect | null>(null);
+  const [spot, setSpot]     = useState<SpotRect | null>(null);
   const [tipPos, setTipPos] = useState<TipPos | null>(null);
   const onNextRef = useRef(onNext);
   const onSkipRef = useRef(onSkip);
@@ -74,8 +124,8 @@ export default function TourOverlay({
       return;
     }
 
-    // scroll target into view inside nearest scrollable ancestor
-    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // Scroll the element to a predictable vertical position in its container.
+    scrollToTarget(el);
 
     const measure = () => {
       const r = el.getBoundingClientRect();
@@ -90,7 +140,8 @@ export default function TourOverlay({
       setTipPos(calcTipPos(padded, window.innerWidth, window.innerHeight));
     };
 
-    const t = setTimeout(measure, 220);
+    // 100 ms is enough for the browser to reflow after the synchronous scroll.
+    const t = setTimeout(measure, 100);
     window.addEventListener('resize', measure);
     return () => { clearTimeout(t); window.removeEventListener('resize', measure); };
   }, [targetSelector]); // eslint-disable-line react-hooks/exhaustive-deps

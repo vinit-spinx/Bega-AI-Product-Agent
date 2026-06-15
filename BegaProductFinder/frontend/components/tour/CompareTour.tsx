@@ -16,23 +16,16 @@ const ALL_STEPS = [
     title:       'Generate BOM',
     description: 'Click to get an instant priced Bill of Materials with DNP pricing and lead times for every item.',
   },
-  {
-    selector:    '[data-tour="bom-section"]',
-    title:       'Pricing Breakdown',
-    description: 'Your detailed line-item pricing, lead times, and totals appear here once generated. Export as CSV or print for your client.',
-  },
 ];
 
 // Rendered inside CompareDrawer — mounts when drawer opens, unmounts when it closes.
-// Uses mount-effect to trigger the tour on first open.
+// Uses mount-effect to trigger the tour on first open (per the configured persistence mode).
 export default function CompareTour() {
   const [steps, setSteps]   = useState<typeof ALL_STEPS>([]);
   const [step, setStep]     = useState(0);
   const [active, setActive] = useState(false);
 
   useEffect(() => {
-    // This effect runs on every mount (= every time the drawer opens).
-    // localStorage guard ensures it only shows once ever.
     if (typeof window === 'undefined') return;
     if (localStorage.getItem(STORAGE_KEY)) return;
 
