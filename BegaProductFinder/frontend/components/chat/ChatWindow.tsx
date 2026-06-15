@@ -8,6 +8,7 @@ import ChatInput from './ChatInput';
 import MessageBubble from './MessageBubble';
 import ShortlistButton from './ShortlistButton';
 import ProductTour from '../tour/ProductTour';
+import SuggestionCards from './SuggestionCards';
 
 // The BEGA B-letterform path reused in multiple places
 const BEGA_B_PATH =
@@ -17,15 +18,15 @@ export { BEGA_B_PATH };
 
 
 // ShortlistProvider must wrap ChatContent so useShortlist() can be called inside it.
-export default function ChatWindow() {
+export default function ChatWindow({ showSuggestions = false }: { showSuggestions?: boolean }) {
   return (
     <ShortlistProvider>
-      <ChatContent />
+      <ChatContent showSuggestions={showSuggestions} />
     </ShortlistProvider>
   );
 }
 
-function ChatContent() {
+function ChatContent({ showSuggestions = false }: { showSuggestions?: boolean }) {
   const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
   const { clearAll: clearShortlist } = useShortlist();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -121,28 +122,9 @@ function ChatContent() {
               <ChatInput onSend={sendMessage} isLoading={isLoading} onClear={handleNewChat} variant="hero" />
             </div>
 
-            {/* <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-5">
-              {SUGGESTED_STARTERS.map((s, idx) => (
-                <button
-                  key={s.label}
-                  onClick={() => sendMessage(s.label)}
-                  style={{ animationDelay: `${370 + idx * 55}ms` }}
-                  className="group text-left rounded-xl border border-bega-border-1 bg-white
-                             hover:border-bega-border-3 hover:shadow-card
-                             px-3.5 py-3.5 transition-all duration-200 animate-fade-in"
-                >
-                  <div className="mb-2.5">
-                    <StarterIcon type={s.iconType} />
-                  </div>
-                  <span className="block text-[10px] text-bega-text-3 uppercase tracking-widest mb-1 font-medium group-hover:text-bega-text-2 transition-colors">
-                    {s.category}
-                  </span>
-                  <span className="block text-xs text-bega-text-2 group-hover:text-bega-text-1 leading-snug transition-colors">
-                    {s.label}
-                  </span>
-                </button>
-              ))}
-            </div> */}
+            {showSuggestions && (
+              <SuggestionCards onSend={sendMessage} />
+            )}
           </div>
         </div>
 
