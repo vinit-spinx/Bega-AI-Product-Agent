@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { BomReport, ColorTemperatureOption, FurnitureSearchResult, ProductDetail, ProductSearchResult } from '@/types';
 import { type ShortlistEntry, useShortlist } from '@/context/ShortlistContext';
 import BomTable from './BomTable';
+import CompareTour from '../tour/CompareTour';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -149,8 +150,9 @@ export default function CompareDrawer() {
 
           <div className="ml-auto flex items-center gap-2">
             {/* Generate BOM button — visible when 2+ items */}
-            {colCount >= 2 && (
+            {colCount >= 1 && (
               <button
+                data-tour="generate-bom-btn"
                 onClick={handleGenerateBom}
                 disabled={bomLoading}
                 className="flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold
@@ -169,7 +171,7 @@ export default function CompareDrawer() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Generate BOM for {colCount} products
+                    Generate BOM for {colCount} {colCount === 1 ? 'product' : 'products'}
                   </>
                 )}
               </button>
@@ -269,7 +271,7 @@ export default function CompareDrawer() {
               </tr>
 
               {/* ── Quantity row ──────────────────────────────────────────── */}
-              <tr className="border-b border-bega-border-1 bg-bega-bg-1">
+              <tr data-tour="quantity-row" className="border-b border-bega-border-1 bg-bega-bg-1">
                 <td className="sticky left-0 z-10 bg-bega-bg-1 px-4 py-2.5 text-bega-text-2 text-xs font-medium">
                   Quantity
                 </td>
@@ -437,23 +439,25 @@ export default function CompareDrawer() {
             </tbody>
           </table>
 
-          {/* ── BOM error ─────────────────────────────────────────────────── */}
-          {bomError && (
-            <div className="mx-4 mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
-              {bomError}
-            </div>
-          )}
-
-          {/* ── BOM result ────────────────────────────────────────────────── */}
-          {bomReport && (
-            <div data-bom className="mx-4 mb-6">
-              <p className="text-[11px] text-bega-text-3 mb-2 font-semibold uppercase tracking-widest">
-                Bill of Materials — Shortlisted Products
-              </p>
-              <BomTable report={bomReport} />
-            </div>
-          )}
+          {/* ── BOM section — persistent anchor for tour + results ───────── */}
+          <div data-tour="bom-section" className="mx-4 mb-6" style={{ minHeight: 8 }}>
+            {bomError && (
+              <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs mb-4">
+                {bomError}
+              </div>
+            )}
+            {bomReport && (
+              <div data-bom>
+                <p className="text-[11px] text-bega-text-3 mb-2 font-semibold uppercase tracking-widest">
+                  Bill of Materials — Shortlisted Products
+                </p>
+                <BomTable report={bomReport} />
+              </div>
+            )}
+          </div>
         </div>
+
+        <CompareTour />
       </div>
     </>
   );

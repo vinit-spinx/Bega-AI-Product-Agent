@@ -80,6 +80,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             </div>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
               <button
+                data-tour="pin-button"
                 onClick={handlePin}
                 title={pinned ? 'Remove from shortlist' : 'Add to shortlist'}
                 className={`w-7 h-7 rounded-sm flex items-center justify-center transition-all duration-150 border
@@ -194,7 +195,7 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       {/* ── Project showcase — only when product has associated projects ───── */}
       {product.projects && product.projects.length > 0 && (
-        <div className="px-3 pb-3 border-t border-bega-border-1">
+        <div data-tour="product-projects" className="px-3 pb-3 border-t border-bega-border-1">
           <p className="text-[10px] text-bega-text-3 mt-2.5 mb-2 font-semibold uppercase tracking-[0.14em]">
             Seen in {product.projects.length === 1 ? '1 Project' : `${product.projects.length} Projects`}
           </p>

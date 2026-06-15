@@ -7,15 +7,7 @@ import CompareDrawer from '../product/CompareDrawer';
 import ChatInput from './ChatInput';
 import MessageBubble from './MessageBubble';
 import ShortlistButton from './ShortlistButton';
-
-const SUGGESTED_STARTERS = [
-  { category: 'Specification',  label: 'Dark sky bollard lights',        iconType: 'bollard'  },
-  { category: 'Project',        label: 'Luxury villa entrance lighting',  iconType: 'home'     },
-  { category: 'Project',        label: '5-star hotel recommendation',     iconType: 'hotel'    },
-  { category: 'Furniture',      label: 'Outdoor plaza furniture',         iconType: 'bench'    },
-  { category: 'Technical',      label: 'Exterior IP65+ fixtures',         iconType: 'shield'   },
-  { category: 'Controls',       label: 'DALI-compatible luminaires',      iconType: 'sliders'  },
-];
+import ProductTour from '../tour/ProductTour';
 
 // The BEGA B-letterform path reused in multiple places
 const BEGA_B_PATH =
@@ -23,66 +15,6 @@ const BEGA_B_PATH =
 
 export { BEGA_B_PATH };
 
-
-function StarterIcon({ type }: { type: string }) {
-  const cls = 'text-bega-border-3 group-hover:text-bega-text-2 transition-colors duration-200';
-  const props = { width: 22, height: 22, fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  switch (type) {
-    case 'bollard': return (
-      <svg className={cls} viewBox="0 0 22 22" {...props}>
-        <ellipse cx="11" cy="5.5" rx="3.5" ry="1.8"/>
-        <rect x="10" y="7.3" width="2" height="8.5" rx="1"/>
-        <rect x="6.5" y="15.8" width="9" height="2.2" rx="1"/>
-        <line x1="5" y1="7.5" x2="7.5" y2="8.5"/>
-        <line x1="17" y1="7.5" x2="14.5" y2="8.5"/>
-        <line x1="11" y1="3" x2="11" y2="2"/>
-      </svg>
-    );
-    case 'home': return (
-      <svg className={cls} viewBox="0 0 22 22" {...props}>
-        <path d="M3 10.5L11 3l8 7.5"/>
-        <path d="M5.5 9v10h4v-5.5h3V19h4V9"/>
-      </svg>
-    );
-    case 'hotel': return (
-      <svg className={cls} viewBox="0 0 22 22" {...props}>
-        <rect x="3" y="7" width="16" height="13"/>
-        <path d="M3 7l8-5 8 5"/>
-        <rect x="6" y="10" width="2.5" height="2.5"/>
-        <rect x="10" y="10" width="2.5" height="2.5"/>
-        <rect x="14" y="10" width="2.5" height="2.5"/>
-        <rect x="8.5" y="14.5" width="5" height="5.5"/>
-      </svg>
-    );
-    case 'bench': return (
-      <svg className={cls} viewBox="0 0 22 22" {...props}>
-        <rect x="2" y="10" width="18" height="2.2" rx="1"/>
-        <line x1="5.5" y1="12.2" x2="5.5" y2="18"/>
-        <line x1="16.5" y1="12.2" x2="16.5" y2="18"/>
-        <rect x="3.5" y="5.8" width="15" height="2.2" rx="1"/>
-        <line x1="7" y1="8" x2="5.5" y2="10"/>
-        <line x1="15" y1="8" x2="16.5" y2="10"/>
-      </svg>
-    );
-    case 'shield': return (
-      <svg className={cls} viewBox="0 0 22 22" {...props}>
-        <path d="M11 2L3 6v6.5C3 17 6.5 19.5 11 21c4.5-1.5 8-4 8-8.5V6L11 2z"/>
-        <path d="M7.5 11.5l2.5 2.5 4.5-5"/>
-      </svg>
-    );
-    case 'sliders': return (
-      <svg className={cls} viewBox="0 0 22 22" {...props}>
-        <line x1="2" y1="5.5" x2="20" y2="5.5"/>
-        <circle cx="7.5" cy="5.5" r="2.5" fill="currentColor" fillOpacity="0.25" stroke="currentColor"/>
-        <line x1="2" y1="11" x2="20" y2="11"/>
-        <circle cx="14.5" cy="11" r="2.5" fill="currentColor" fillOpacity="0.25" stroke="currentColor"/>
-        <line x1="2" y1="16.5" x2="20" y2="16.5"/>
-        <circle cx="9" cy="16.5" r="2.5" fill="currentColor" fillOpacity="0.25" stroke="currentColor"/>
-      </svg>
-    );
-    default: return null;
-  }
-}
 
 // ShortlistProvider must wrap ChatContent so useShortlist() can be called inside it.
 export default function ChatWindow() {
@@ -108,6 +40,7 @@ function ChatContent() {
   }, [clearSession, clearShortlist]);
 
   const isEmpty = messages.length === 0;
+  const hasProducts = messages.some(m => (m.products?.length ?? 0) > 0);
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -230,7 +163,8 @@ function ChatContent() {
         </>
       )}
 
-      <ShortlistButton />
+      {!isEmpty && <ShortlistButton />}
+      <ProductTour hasProducts={hasProducts} />
       <CompareDrawer />
     </div>
   );
