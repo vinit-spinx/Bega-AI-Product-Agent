@@ -919,9 +919,9 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         modelConfig.ToLowerInvariant() switch
         {
             "haiku"  => "claude-haiku-4-5-20251001",
-            "sonnet" => "claude-sonnet-4-20250514",
+            "sonnet" => "claude-sonnet-4-6",
             "opus"   => "claude-opus-4-8",
-            _        => modelConfig  // full model ID passed through as-is Old One claude-sonnet-4-20250514
+            _        => modelConfig  // full model ID passed through as-is
         };
 
     private static decimal? TryGetDecimal(JsonNode? node)

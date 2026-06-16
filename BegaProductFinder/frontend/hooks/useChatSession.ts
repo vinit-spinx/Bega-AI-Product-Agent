@@ -32,7 +32,8 @@ export interface UseChatSessionReturn {
   messages: UiMessage[];
   sessionId: string;
   isLoading: boolean;
-  sendMessage: (message: string, image?: ImageAttachment) => Promise<void>;
+  /** `displayText` overrides the label shown in the chat bubble without affecting the API payload. */
+  sendMessage: (message: string, image?: ImageAttachment, displayText?: string) => Promise<void>;
   clearSession: () => void;
 }
 
@@ -161,7 +162,7 @@ export function useChatSession(): UseChatSessionReturn {
   );
 
   const sendMessage = useCallback(
-    async (text: string, image?: ImageAttachment) => {
+    async (text: string, image?: ImageAttachment, displayText?: string) => {
       if (!text.trim() || isLoading) return;
 
       // Track the latest image so subsequent turns (e.g. the reply to a clarification question)
@@ -171,7 +172,8 @@ export function useChatSession(): UseChatSessionReturn {
       const userMsg: UiMessage = {
         id: crypto.randomUUID(),
         role: 'user',
-        content: text.trim(),
+        // displayText shows in the bubble; the full `text` is always sent to the API.
+        content: displayText?.trim() ?? text.trim(),
         imagePreview: image?.previewUrl,
         isStreaming: false,
       };

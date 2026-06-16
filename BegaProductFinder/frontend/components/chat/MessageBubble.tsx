@@ -167,9 +167,20 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
             <div className="bg-white rounded-2xl rounded-tl-sm border border-bega-border-1
                             px-4 py-3 block max-w-full shadow-card">
               {message.error ? (
-                <div className="text-red-600 text-sm">
-                  <span className="font-medium">Error: </span>
-                  {message.error}
+                <div className="flex items-start gap-2.5">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}
+                       strokeLinecap="round" className="w-4 h-4 text-bega-text-3 flex-shrink-0 mt-0.5">
+                    <circle cx="8" cy="8" r="6" />
+                    <path d="M8 5v3.5M8 10.5h.01" />
+                  </svg>
+                  <div>
+                    <p className="text-[13px] text-bega-text-1 font-medium leading-snug">
+                      Something went wrong
+                    </p>
+                    <p className="text-[12px] text-bega-text-3 mt-0.5">
+                      We couldn&apos;t process your request. Please try again or connect with the BEGA team directly.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="text-sm min-w-0">
@@ -186,8 +197,8 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
           </div>
         </div>
 
-        {/* ── Next steps panel — shown once streaming ends and recommendations are present ── */}
-        {!message.isStreaming && hasRichData && (
+        {/* ── Next steps panel — shown after rich data or on error ── */}
+        {!message.isStreaming && (hasRichData || !!message.error) && (
           <NextStepsPanel sessionId={sessionId} />
         )}
 

@@ -27,6 +27,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// <summary>Project references linked to products from the BEGA JSON Projects array.</summary>
     public DbSet<ProductProject> ProductProjects => Set<ProductProject>();
 
+    /// <summary>AI action cards displayed in the chat sidebar, configurable via the admin CMS.</summary>
+    public DbSet<CmsAction> CmsActions => Set<CmsAction>();
+
+    /// <summary>Suggestion chips displayed below the chat hero, configurable via the admin CMS.</summary>
+    public DbSet<CmsSuggestion> CmsSuggestions => Set<CmsSuggestion>();
+
+    /// <summary>Hero banner content for the chat landing page — always a single row (Id = 1).</summary>
+    public DbSet<CmsHeroContent> CmsHeroContent => Set<CmsHeroContent>();
+
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

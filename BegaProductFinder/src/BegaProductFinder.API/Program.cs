@@ -85,6 +85,10 @@ builder.Services.AddScoped<TextChunker>(_ => new TextChunker(
     ingestionOptions.ChunkOverlap));
 builder.Services.AddScoped<IIngestionPipeline, IngestionPipeline>();
 
+// ── Email (MailKit / Mailtrap) ────────────────────────────────────────────────
+builder.Services.Configure<SmtpSettings>(config.GetSection(SmtpSettings.SectionName));
+builder.Services.AddScoped<IEmailService, MailKitEmailService>();
+
 // ── Logging ───────────────────────────────────────────────────────────────────
 builder.Logging.AddConsole();
 

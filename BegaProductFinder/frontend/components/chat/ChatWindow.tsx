@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useChatSession } from '@/hooks/useChatSession';
+import { useHeroContent } from '@/hooks/useAdminStore';
 import { ShortlistProvider, useShortlist } from '@/context/ShortlistContext';
 import CompareDrawer from '../product/CompareDrawer';
 import ChatInput from './ChatInput';
@@ -17,22 +18,40 @@ const BEGA_B_PATH =
 export { BEGA_B_PATH };
 
 
+interface ChatWindowProps {
+  showSuggestions?: boolean;
+  /**
+   * Called once sendMessage is available. The exposed `send(text, displayText?)` lets
+   * a parent (e.g. sidebar) trigger a message where `displayText` is shown in the chat
+   * bubble while `text` (the full prompt) is sent to the API.
+   */
+  onReady?: (send: (text: string, displayText?: string) => void) => void;
+}
+
 // ShortlistProvider must wrap ChatContent so useShortlist() can be called inside it.
-export default function ChatWindow({ showSuggestions = false }: { showSuggestions?: boolean }) {
+export default function ChatWindow({ showSuggestions = false, onReady }: ChatWindowProps) {
   return (
     <ShortlistProvider>
-      <ChatContent showSuggestions={showSuggestions} />
+      <ChatContent showSuggestions={showSuggestions} onReady={onReady} />
     </ShortlistProvider>
   );
 }
 
-function ChatContent({ showSuggestions = false }: { showSuggestions?: boolean }) {
+function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
   const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
   const { clearAll: clearShortlist } = useShortlist();
+  const hero = useHeroContent();
   const bottomRef = useRef<HTMLDivElement>(null);
   // While the product tour is active it controls its own scroll target — we must
   // not fight it by auto-scrolling to the bottom on every new SSE message.
   const tourActiveRef = useRef(false);
+  // Keep the parent layout's sendMessage ref up-to-date so sidebar actions work
+  // even if the hook returns a new function reference after a session reset.
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  useEffect(() => {
+    onReadyRef.current?.((text, displayText) => sendMessage(text, undefined, displayText));
+  }, [sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (tourActiveRef.current) return;
@@ -84,7 +103,24 @@ function ChatContent({ showSuggestions = false }: { showSuggestions?: boolean })
 
       {isEmpty ? (
         /* ── Hero landing ─────────────────────────────────────────────────── */
-        <div className="flex-1 flex flex-col items-center justify-center px-6 pb-12 bg-bega-bg-1">
+        <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-12 bg-bega-bg-1">
+
+          {/* Dynamic background image (set via Admin → Hero Content) */}
+          {hero.backgroundImageUrl && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={hero.backgroundImageUrl}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                // style={{ opacity: 1 }}
+              />
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: 'linear-gradient(to bottom, rgba(247,245,242,0.72) 0%, rgba(247,245,242,0.80) 60%, rgba(247,245,242,0.92) 100%)' }}
+              />
+            </>
+          )}
 
           {/* ── Center content ── */}
           <div className="flex flex-col items-center mb-10 relative z-10">
@@ -106,14 +142,16 @@ function ChatContent({ showSuggestions = false }: { showSuggestions?: boolean })
               className="text-[42px] font-normal text-bega-text-1 tracking-tight text-center leading-tight animate-fade-in"
               style={{ animationDelay: '160ms' }}
             >
-              Find the Perfect Lighting Solution
+              {hero.title}
             </h2>
-            <p
-              className="text-[11px] text-bega-text-3 tracking-[0.22em] uppercase mt-4 text-center max-w-xl animate-fade-in"
-              style={{ animationDelay: '230ms' }}
-            >
-              Discover lighting, furniture, and control solutions engineered for exceptional architectural environments.
-            </p>
+            {hero.description && (
+              <p
+                className="text-[11px] text-bega-text-3 tracking-[0.22em] uppercase mt-4 text-center max-w-xl animate-fade-in"
+                style={{ animationDelay: '230ms' }}
+              >
+                {hero.description}
+              </p>
+            )}
           </div>
 
           {/* ── Input + suggestion grid ── */}

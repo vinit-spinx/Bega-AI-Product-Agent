@@ -37,6 +37,9 @@
     <PackageReference Include="Polly" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
 
+    <!-- Email via MailKit (SMTP / Mailtrap) -->
+    <PackageReference Include="MailKit" Version="4.11.0" />
+
     <!-- Logging abstractions -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
 
