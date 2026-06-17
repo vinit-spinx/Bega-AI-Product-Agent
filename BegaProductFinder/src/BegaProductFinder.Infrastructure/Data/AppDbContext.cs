@@ -36,6 +36,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// <summary>Hero banner content for the chat landing page — always a single row (Id = 1).</summary>
     public DbSet<CmsHeroContent> CmsHeroContent => Set<CmsHeroContent>();
 
+    /// <summary>Lightweight event log for AI usage analytics (queries, action clicks, suggestion clicks).</summary>
+    public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
+
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

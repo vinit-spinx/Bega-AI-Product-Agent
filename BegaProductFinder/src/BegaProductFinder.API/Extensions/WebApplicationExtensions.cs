@@ -19,6 +19,8 @@ public static class WebApplicationExtensions
         ContactEndpoints.Map(app);
         AdminEndpoints.Map(app);
         ContentEndpoints.Map(app);
+        InsightsEndpoints.Map(app);
+        InsightsV2Endpoints.Map(app);
         return app;
     }
 }

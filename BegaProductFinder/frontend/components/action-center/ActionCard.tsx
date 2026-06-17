@@ -1,6 +1,7 @@
 'use client';
 
 import type { SidebarAction, ActionIconName } from './types';
+import { trackEvent } from '@/services/insights/analyticsTracker';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ interface Props {
 export default function ActionCard({ action, onSelect }: Props) {
   return (
     <button
-      onClick={() => onSelect(action.prompt, action.title)}
+      onClick={() => { trackEvent('action_click', action.title); onSelect(action.prompt, action.title); }}
       className="w-full text-left rounded-xl border border-black/[0.06] bg-white px-3 py-2.5
                  flex items-center gap-3 cursor-pointer transition-all duration-200 ease-out
                  hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:-translate-y-px

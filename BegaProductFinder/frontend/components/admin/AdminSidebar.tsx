@@ -55,7 +55,6 @@ const NAV_SECTIONS: NavSection[] = [
       {
         href: '/admin/ai-insights',
         label: 'AI Insights',
-        badge: 'Phase 2',
         icon: (
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
             <path d="M3 15l4-6 4 3 3-5 3 4" />
