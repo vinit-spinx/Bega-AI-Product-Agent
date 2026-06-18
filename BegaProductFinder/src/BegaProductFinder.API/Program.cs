@@ -9,6 +9,10 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
+// Must run BEFORE Build() — ASP.NET Core resolves WebRootFileProvider during Build()
+// and permanently falls back to a NullFileProvider if wwwroot doesn't exist at that moment.
+Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads", "hero"));
+
 // ── CORS ──────────────────────────────────────────────────────────────────────
 var allowedOrigins = config.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
@@ -101,6 +105,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseStaticFiles(); // serves wwwroot/uploads/* — used for admin-uploaded hero images
 app.UseCors();
 app.MapApiEndpoints();
 

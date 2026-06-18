@@ -1,5 +1,6 @@
 'use client';
 import { useCountUp } from '@/hooks/useCountUp';
+import { useGSAPTilt } from '@/hooks/useGSAPTilt';
 
 interface Props {
   label: string;
@@ -14,12 +15,13 @@ interface Props {
 
 export default function KPICardV2({ label, value, format = 'number', textValue, trend, sub, icon, active = true }: Props) {
   const numRef = useCountUp(format !== 'text' ? value : 0, 1.2, active && format !== 'text');
+  const tiltRef = useGSAPTilt<HTMLDivElement>(5);
 
   const trendColor = trend === undefined ? '' : trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-red-500' : 'text-bega-text-3';
   const trendArrow = trend === undefined ? '' : trend > 0 ? '▲' : trend < 0 ? '▼' : '→';
 
   return (
-    <div className="bg-white rounded-2xl border border-bega-border-1 p-5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)] transition-shadow duration-300">
+    <div ref={tiltRef} className="bg-white rounded-2xl border border-bega-border-1 p-5 hover:shadow-[0_8px_28px_rgba(0,0,0,0.1)] transition-shadow duration-300 will-change-transform">
       <div className="flex items-start justify-between mb-3">
         <span className="text-bega-text-3 w-5 h-5">{icon}</span>
         {trend !== undefined && (

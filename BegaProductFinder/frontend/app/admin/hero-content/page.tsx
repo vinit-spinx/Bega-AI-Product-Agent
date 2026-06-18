@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import PageHeader from '@/components/admin/PageHeader';
 import HeroPreview from '@/components/admin/HeroPreview';
-import { fetchHeroContent, saveHeroContent } from '@/services/admin/heroContentService';
+import { fetchHeroContent, saveHeroContent, uploadHeroImage } from '@/services/admin/heroContentService';
 import type { HeroContent } from '@/types/admin';
+
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB — must match the backend limit
 
 const INPUT = 'w-full px-3.5 py-3 rounded-xl border border-bega-border-2 text-[13px] text-bega-text-1 bg-white placeholder:text-bega-text-3 focus:outline-none focus:ring-2 focus:ring-bega-black/10 focus:border-bega-black/40 transition-colors';
 const LABEL = 'block text-[11px] font-semibold text-bega-text-2 uppercase tracking-wider mb-1.5';
@@ -14,6 +16,9 @@ export default function HeroContentPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<Omit<HeroContent, 'id'>>({
     title: '',
     description: '',
@@ -56,6 +61,33 @@ export default function HeroContentPage() {
   const handleReset = async () => {
     await load();
     setSaved(false);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    setUploadError('');
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError('File exceeds the 5MB size limit.');
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setUploadError('Only JPG, PNG, and WEBP images are allowed.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const url = await uploadHeroImage(file);
+      set('backgroundImageUrl', url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -131,26 +163,50 @@ export default function HeroContentPage() {
                     </p>
                   </div>
 
-                  {/* Upload option placeholder */}
+                  {/* Upload from device */}
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-bega-border-1" />
                     <span className="text-[11px] text-bega-text-3">or</span>
                     <div className="flex-1 h-px bg-bega-border-1" />
                   </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
                   <button
                     type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
                     className="w-full flex flex-col items-center justify-center gap-2 py-5 rounded-xl
                                border-2 border-dashed border-bega-border-2 text-bega-text-3 text-[12px]
-                               hover:border-bega-border-3 hover:text-bega-text-2 transition-colors cursor-not-allowed opacity-50"
-                    title="Image upload requires backend storage — configure in Phase 2"
+                               hover:border-bega-border-3 hover:text-bega-text-2 transition-colors
+                               disabled:opacity-60 disabled:cursor-wait"
                   >
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                      <path d="M10 3v10M6 7l4-4 4 4" />
-                      <path d="M3 15h14" />
-                    </svg>
-                    Upload Image
-                    <span className="text-[10px] text-bega-text-3">(Available in Phase 2)</span>
+                    {uploading ? (
+                      <>
+                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 animate-spin">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                          <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                        </svg>
+                        Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                          <path d="M10 3v10M6 7l4-4 4 4" />
+                          <path d="M3 15h14" />
+                        </svg>
+                        Upload Image
+                        <span className="text-[10px] text-bega-text-3">JPG, PNG, or WEBP — max 5MB</span>
+                      </>
+                    )}
                   </button>
+                  {uploadError && (
+                    <p className="text-[11px] text-red-600">{uploadError}</p>
+                  )}
                 </div>
               </div>
 

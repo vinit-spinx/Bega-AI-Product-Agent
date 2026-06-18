@@ -25,3 +25,23 @@ export async function saveHeroContent(data: Omit<HeroContent, 'id'>): Promise<He
   triggerRefetch(['hero']);
   return saved;
 }
+
+export async function uploadHeroImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  // No Content-Type header — the browser sets the multipart boundary automatically.
+  const res = await fetch(`${API_URL}/api/admin/cms/upload-image`, {
+    method: 'POST',
+    headers: { 'X-Admin-Api-Key': ADMIN_KEY },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error ?? `Upload failed: ${res.statusText}`);
+  }
+
+  const data: { url: string } = await res.json();
+  return data.url;
+}

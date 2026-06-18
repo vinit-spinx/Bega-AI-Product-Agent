@@ -1,6 +1,8 @@
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
 using BegaProductFinder.Infrastructure.Data;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -44,6 +46,8 @@ public static class AdminEndpoints
         // ── CMS: Hero Content ─────────────────────────────────────────────────
         cms.MapGet("/hero-content", GetCmsHeroContentAsync).WithName("AdminGetCmsHeroContent");
         cms.MapPut("/hero-content", SaveCmsHeroContentAsync).WithName("AdminSaveCmsHeroContent");
+        cms.MapPost("/upload-image", UploadImageAsync).WithName("AdminUploadImage")
+            .DisableAntiforgery();
 
         // ── Inquiries ─────────────────────────────────────────────────────────
         cms.MapGet("/inquiries", GetInquiriesAsync).WithName("AdminGetInquiries");
@@ -209,6 +213,46 @@ public static class AdminEndpoints
         hero.BackgroundImageUrl = req.BackgroundImageUrl; hero.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(hero);
+    }
+
+    // ── Image Upload (hero background) ───────────────────────────────────────
+
+    private static readonly string[] AllowedImageExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+    private static readonly string[] AllowedImageContentTypes = ["image/jpeg", "image/png", "image/webp"];
+    private const long MaxUploadSizeBytes = 5 * 1024 * 1024; // 5 MB
+
+    private static async Task<IResult> UploadImageAsync(
+        HttpContext httpContext, IConfiguration config, IWebHostEnvironment env,
+        IFormFile? file, CancellationToken ct)
+    {
+        if (!IsAuthorized(httpContext, config)) return Results.Unauthorized();
+
+        if (file is null || file.Length == 0)
+            return Results.BadRequest(new { error = "No file was uploaded." });
+
+        if (file.Length > MaxUploadSizeBytes)
+            return Results.BadRequest(new { error = "File exceeds the 5MB size limit." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!AllowedImageExtensions.Contains(ext) || !AllowedImageContentTypes.Contains(file.ContentType))
+            return Results.BadRequest(new { error = "Only JPG, PNG, and WEBP images are allowed." });
+
+        var webRoot = string.IsNullOrEmpty(env.WebRootPath)
+            ? Path.Combine(env.ContentRootPath, "wwwroot")
+            : env.WebRootPath;
+        var uploadsDir = Path.Combine(webRoot, "uploads", "hero");
+        Directory.CreateDirectory(uploadsDir);
+
+        var fileName = $"{Guid.NewGuid():N}{ext}";
+        var filePath = Path.Combine(uploadsDir, fileName);
+
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream, ct);
+        }
+
+        var url = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/uploads/hero/{fileName}";
+        return Results.Ok(new { url });
     }
 
     // ── Inquiries ─────────────────────────────────────────────────────────────

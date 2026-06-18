@@ -1,16 +1,15 @@
 'use client';
 
-import CommandCenterTab from '@/components/admin/insights/tabs/CommandCenterTab';
+import LeadPipelineTab from '@/components/admin/insights/tabs/LeadPipelineTab';
 
-export default function AiInsightsPage() {
+export default function LeadPipelinePage() {
   return (
     <div className="px-6 py-7">
-      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-[22px] font-semibold text-bega-text-1 tracking-tight mb-1">AI Insights</h1>
+          <h1 className="text-[22px] font-semibold text-bega-text-1 tracking-tight mb-1">Lead Pipeline</h1>
           <p className="text-[13px] text-bega-text-3">
-            Business intelligence from real BEGA AI Product Advisor data.
+            Every captured lead from the last 30 days, with the full conversation behind it.
           </p>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-bega-text-3 mt-1">
@@ -19,7 +18,7 @@ export default function AiInsightsPage() {
         </div>
       </div>
 
-      <CommandCenterTab />
+      <LeadPipelineTab />
     </div>
   );
 }

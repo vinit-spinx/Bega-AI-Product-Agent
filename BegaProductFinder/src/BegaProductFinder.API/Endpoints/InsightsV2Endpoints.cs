@@ -526,14 +526,15 @@ public static class InsightsV2Endpoints
 
         var cutoff30 = DateTime.UtcNow.AddDays(-30);
 
-        // Repeated queries = potential content gaps
+        // Repeated queries = potential content gaps. Capped to 5 for the High-Frequency
+        // Queries widget — this is a focused "top priorities" list, not an exhaustive log.
         var repeatedQueries = await db.AnalyticsEvents
             .Where(e => e.EventType == "query" && e.CreatedAt >= cutoff30 && e.Name != null)
             .GroupBy(e => e.Name!)
             .Where(g => g.Count() >= 2)
             .Select(g => new { query = g.Key, count = g.Count() })
             .OrderByDescending(x => x.count)
-            .Take(20)
+            .Take(5)
             .ToListAsync(ct);
 
         // Priority scoring: frequency × recency weight

@@ -62,6 +62,26 @@ const NAV_SECTIONS: NavSection[] = [
           </svg>
         ),
       },
+      {
+        href: '/admin/lead-pipeline',
+        label: 'Lead Pipeline',
+        icon: (
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
+            <rect x="2.5" y="3.5" width="15" height="3.4" rx="1" />
+            <rect x="2.5" y="8.3" width="15" height="3.4" rx="1" />
+            <rect x="2.5" y="13.1" width="9" height="3.4" rx="1" />
+          </svg>
+        ),
+      },
+      {
+        href: '/admin/demand-intelligence',
+        label: 'Demand Intelligence',
+        icon: (
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
+            <path d="M10 2.5l7 3.5v7l-7 3.5-7-3.5v-7z" /><path d="M10 2.5v14M3 6l7 3.5 7-3.5" />
+          </svg>
+        ),
+      },
     ],
   },
   {
@@ -151,7 +171,7 @@ export default function AdminSidebar() {
       {/* ── Footer ────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-bega-border-1 mt-2 space-y-0.5">
         <Link
-          href="/chat"
+          href="/chat/sidebar"
           className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] text-bega-text-3
                      hover:text-bega-text-1 hover:bg-bega-bg-1 transition-colors group"
         >
