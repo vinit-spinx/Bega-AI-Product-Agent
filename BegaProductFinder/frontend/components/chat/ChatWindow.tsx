@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useHeroContent } from '@/hooks/useAdminStore';
 import { ShortlistProvider, useShortlist } from '@/context/ShortlistContext';
@@ -10,6 +10,7 @@ import MessageBubble from './MessageBubble';
 import ShortlistButton from './ShortlistButton';
 import ProductTour from '../tour/ProductTour';
 import SuggestionCards from './SuggestionCards';
+import LightReveal from '../hero/LightReveal';
 
 // The BEGA B-letterform path reused in multiple places
 const BEGA_B_PATH =
@@ -42,6 +43,8 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
   const { clearAll: clearShortlist } = useShortlist();
   const hero = useHeroContent();
   const bottomRef = useRef<HTMLDivElement>(null);
+  // true once the cinematic light reveal has finished — prevents replaying on re-render
+  const [revealDone, setRevealDone] = useState(false);
   // While the product tour is active it controls its own scroll target — we must
   // not fight it by auto-scrolling to the bottom on every new SSE message.
   const tourActiveRef = useRef(false);
@@ -103,7 +106,9 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
 
       {isEmpty ? (
         /* ── Hero landing ─────────────────────────────────────────────────── */
-        <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-12 bg-bega-bg-1">
+        <div className="relative flex-1 overflow-hidden">
+        <LightReveal onComplete={() => setRevealDone(true)} skip={revealDone}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 pb-12 bg-bega-bg-1">
 
           {/* Dynamic background image (set via Admin → Hero Content) */}
           {hero.backgroundImageUrl && (
@@ -164,6 +169,8 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
               <SuggestionCards onSend={sendMessage} />
             )}
           </div>
+        </div>
+        </LightReveal>
         </div>
 
       ) : (
