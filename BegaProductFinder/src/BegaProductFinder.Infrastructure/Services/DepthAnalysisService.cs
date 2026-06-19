@@ -33,7 +33,7 @@ public sealed class DepthAnalysisService
         _logger = logger;
         _enabled = config.GetValue("DepthAnalysis:Enabled", true);
         var baseUrl = (config["DepthAnalysis:BaseUrl"] ?? "http://localhost:8001").TrimEnd('/');
-        var path = (config["DepthAnalysis:PredictPath"] ?? "/predict").TrimStart('/');
+        var path = (config["DepthAnalysis:PredictPath"] ?? "/depth").TrimStart('/');
         _predictUrl = $"{baseUrl}/{path}";
         _timeoutSeconds = config.GetValue("DepthAnalysis:TimeoutSeconds", 30);
     }
@@ -45,7 +45,7 @@ public sealed class DepthAnalysisService
     public async Task<string?> GetDepthMapBase64Async(string imageBase64, CancellationToken ct)
     {
         if (!_enabled) return null;
-
+        _logger.LogInformation("Requesting depth analysis from {Url} with timeout {Timeout}s", _predictUrl, _timeoutSeconds);
         try
         {
             using var client = _httpFactory.CreateClient("DepthAnalysis");
@@ -85,7 +85,7 @@ public sealed class DepthAnalysisService
             }
 
             var depthBase64 = node?["depthBase64"]?.GetValue<string>();
-
+            _logger.LogInformation("Depth analysis completed successfully. Depth map size: {Length} bytes", depthBase64?.Length ?? 0);
             if (depthBase64 is null)
             {
                 _logger.LogWarning(

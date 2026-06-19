@@ -48,7 +48,10 @@ builder.Services.AddHttpClient("Anthropic", client =>
 });
 
 // Named client for Depth Anything V2 sidecar — timeout set per-request from config
-builder.Services.AddHttpClient("DepthAnalysis");
+builder.Services.AddHttpClient("DepthAnalysis", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
 
 // ── Swap-architecture services ────────────────────────────────────────────────
 builder.Services.AddEmbeddingService(config);
