@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ColorTemperatureOption, ProductProject, ProductSearchResult } from '@/types';
 import { useShortlist } from '@/context/ShortlistContext';
+import { trackEvent } from '@/services/insights/analyticsTracker';
 import DimensionTable from './DimensionTable';
 
 interface ProductCardProps {
   product: ProductSearchResult;
+  sessionId?: string;
 }
 
 function parseCct(json?: string | null): ColorTemperatureOption[] {
@@ -18,10 +20,17 @@ function parseCct(json?: string | null): ColorTemperatureOption[] {
   }
 }
 
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({ product, sessionId }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const { pin, unpin, isPinned } = useShortlist();
   const pinned = isPinned(product.catalogNumber);
+
+  // Fires once per mount (i.e. once per unique catalog number shown) — a passive
+  // "this product was shown to the user" signal for the conversion funnel.
+  useEffect(() => {
+    trackEvent('product_viewed', product.catalogNumber, sessionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePin = () => {
     if (pinned) unpin(product.catalogNumber);

@@ -34,6 +34,8 @@ public static class InsightsV2Endpoints
         g.MapGet("/leads",          GetLeadsAsync);
         g.MapGet("/lead-insights",  GetLeadInsightsAsync);
         g.MapGet("/lead-table",     GetLeadTableAsync);
+        g.MapGet("/conversations",  GetConversationsAsync);
+        g.MapGet("/funnel",         GetFunnelAsync);
         g.MapGet("/products",       GetProductsAsync);
         g.MapGet("/specifications", GetSpecificationsAsync);
         g.MapGet("/content",        GetContentIntelligenceAsync);
@@ -273,7 +275,6 @@ public static class InsightsV2Endpoints
             email   = l.Email,
             preview = l.Query.Length > 80 ? l.Query[..80] + "…" : l.Query,
             date    = l.CreatedAt.ToString("MMM d, HH:mm"),
-            score   = ScoreLead(l.Query),
         }).ToList();
 
         // Top lead queries
@@ -325,36 +326,213 @@ public static class InsightsV2Endpoints
     // ── Lead Table (30-day leads with session link) ───────────────────────────
 
     private static async Task<IResult> GetLeadTableAsync(
-        HttpContext ctx, AppDbContext db, IConfiguration config, CancellationToken ct = default)
+        HttpContext ctx, AppDbContext db, IConfiguration config,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 15,
+        [FromQuery] string? temperature = null, [FromQuery] string? source = null,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
     {
         if (!Auth(ctx, config)) return Results.Unauthorized();
 
-        var cutoff30 = DateTime.UtcNow.AddDays(-30);
+        page     = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
-        // Pull a generous batch then filter in memory — DB can't run the consonant-ratio check
-        var rawLeads = await db.ContactInquiries
-            .Where(l => l.CreatedAt >= cutoff30 && l.Query.Length >= 15)
-            .OrderByDescending(l => l.CreatedAt)
-            .Select(l => new { l.InquiryId, l.SessionId, l.Name, l.Email, l.Query, l.CreatedAt })
-            .Take(200)
+        // Leads are sessions the AI classified as IsLead — not just form submissions, so an AI-only
+        // lead (no Connect with BEGA form) still shows up here, attributed to "Anonymous Visitor".
+        var statuses = await db.SessionFunnelStatuses
+            .AsNoTracking()
+            .Where(s => s.IsFinalized && s.IsLead)
+            .OrderByDescending(s => s.FinalizedAt)
             .ToListAsync(ct);
 
-        var leads = rawLeads
-            .Where(l => IsValidLeadQuery(l.Query))  // removes error-state and gibberish submissions
-            .Take(100)
-            .Select(l => new
-            {
-                id        = l.InquiryId,
-                sessionId = l.SessionId,
-                name      = l.Name,
-                email     = l.Email,
-                query     = l.Query,
-                preview   = l.Query.Length > 120 ? l.Query[..120] + "…" : l.Query,
-                date      = l.CreatedAt.ToString("MMM d, yyyy · HH:mm"),
-                score     = ScoreLead(l.Query),
-            }).ToList();
+        var sessionIds = statuses.Select(s => s.SessionId.ToString()).ToList();
+        var inquiriesBySession = await db.ContactInquiries
+            .AsNoTracking()
+            .Where(c => sessionIds.Contains(c.SessionId))
+            .ToListAsync(ct);
+        var inquiryMap = inquiriesBySession
+            .GroupBy(c => c.SessionId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.CreatedAt).First());
 
-        return Results.Ok(new { leads, count = leads.Count });
+        var leads = statuses
+        .Where(s =>
+        {
+            // Drop error-state/gibberish form submissions, but never drop AI-only leads —
+            // they have no form query to validate in the first place.
+            var sid = s.SessionId.ToString();
+            return !inquiryMap.TryGetValue(sid, out var inquiry) || IsValidLeadQuery(inquiry.Query);
+        })
+        .Select(s =>
+        {
+            var sid = s.SessionId.ToString();
+            inquiryMap.TryGetValue(sid, out var inquiry);
+            var brief = inquiry?.Query ?? s.Summary ?? string.Empty;
+            return new
+            {
+                id            = inquiry?.InquiryId ?? 0,
+                sessionId     = sid,
+                name          = inquiry?.Name ?? "Anonymous Visitor",
+                email         = inquiry?.Email ?? string.Empty,
+                query         = brief,
+                preview       = brief.Length > 120 ? brief[..120] + "…" : brief,
+                date          = (s.FinalizedAt ?? s.CreatedAt).ToString("MMM d, yyyy · HH:mm"),
+                temperature   = s.LeadTemperature ?? "cold",
+                source        = inquiry?.Source,
+                company       = inquiry?.Company,
+                // Raw JSON strings — frontend parses with JSON.parse, same pattern as
+                // ColorTemperatureOption/ProductOptions parsing elsewhere in the codebase.
+                shortlistJson = inquiry?.ShortlistJson,
+                bomReportJson = inquiry?.BomReportJson,
+            };
+        })
+        .Where(l => temperature is null || l.temperature == temperature)
+        .Where(l => source is null || l.source == source)
+        .Where(l => string.IsNullOrWhiteSpace(search) ||
+            l.name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            l.email.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            l.query.Contains(search, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+        var total = leads.Count;
+        var page_ = leads.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Results.Ok(new { leads = page_, count = total, total, page, pageSize });
+    }
+
+    // ── Conversation & Logs ───────────────────────────────────────────────────
+
+    private static async Task<IResult> GetConversationsAsync(
+        HttpContext ctx, AppDbContext db, IConfiguration config,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 15,
+        [FromQuery] string? stage = null, [FromQuery] string? temperature = null,
+        [FromQuery] bool? isLead = null, [FromQuery] string? search = null,
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
+        CancellationToken ct = default)
+    {
+        if (!Auth(ctx, config)) return Results.Unauthorized();
+
+        page     = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.SessionFunnelStatuses.AsNoTracking().Where(s => s.IsFinalized);
+        if (!string.IsNullOrWhiteSpace(stage))       query = query.Where(s => s.FunnelStage == stage);
+        if (!string.IsNullOrWhiteSpace(temperature)) query = query.Where(s => s.LeadTemperature == temperature);
+        if (isLead.HasValue)                         query = query.Where(s => s.IsLead == isLead.Value);
+        if (from.HasValue)                           query = query.Where(s => s.FinalizedAt >= from.Value);
+        if (to.HasValue)                              query = query.Where(s => s.FinalizedAt <= to.Value);
+
+        var statuses = await query.OrderByDescending(s => s.FinalizedAt).ToListAsync(ct);
+
+        var sessionIds = statuses.Select(s => s.SessionId).ToList();
+        var sessionIdStrs = sessionIds.Select(g => g.ToString()).ToList();
+
+        var sessions = await db.ChatSessions.AsNoTracking()
+            .Where(c => sessionIds.Contains(c.SessionId))
+            .Select(c => new { c.SessionId, c.LastActivityAt, c.MessagesJson })
+            .ToListAsync(ct);
+        var sessionMap = sessions.ToDictionary(s => s.SessionId);
+
+        var inquiries = await db.ContactInquiries.AsNoTracking()
+            .Where(c => sessionIdStrs.Contains(c.SessionId))
+            .ToListAsync(ct);
+        var inquiryMap = inquiries
+            .GroupBy(c => c.SessionId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.CreatedAt).First());
+
+        var items = statuses.Select(s =>
+        {
+            sessionMap.TryGetValue(s.SessionId, out var session);
+            inquiryMap.TryGetValue(s.SessionId.ToString(), out var inquiry);
+            int messageCount = 0;
+            if (session is not null)
+            {
+                try { messageCount = JsonSerializer.Deserialize<List<object>>(session.MessagesJson)?.Count ?? 0; }
+                catch (JsonException) { messageCount = 0; }
+            }
+            return new
+            {
+                sessionId      = s.SessionId.ToString(),
+                name           = inquiry?.Name ?? "Anonymous Visitor",
+                email          = inquiry?.Email,
+                stage          = s.FunnelStage,
+                isLead         = s.IsLead,
+                temperature    = s.LeadTemperature,
+                summary        = s.Summary,
+                messageCount,
+                lastActivityAt = session?.LastActivityAt ?? s.FinalizedAt ?? s.CreatedAt,
+            };
+        })
+        .Where(c => string.IsNullOrWhiteSpace(search) ||
+            c.name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            (c.email != null && c.email.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+            (c.summary != null && c.summary.Contains(search, StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+
+        var total = items.Count;
+        var page_ = items.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Results.Ok(new { items = page_, total, page, pageSize });
+    }
+
+    // ── Conversion Funnel: Query → Product Viewed → Shortlisted → BOM Generated → Lead Captured ──
+
+    private static readonly string[] FunnelStageOrder  = ["query", "product_viewed", "shortlisted", "bom_generated", "lead_captured"];
+    private static readonly string[] FunnelStageLabels = ["Query", "Product Viewed", "Shortlisted", "BOM Generated", "Lead Captured"];
+
+    private static async Task<IResult> GetFunnelAsync(
+        HttpContext ctx, AppDbContext db, IConfiguration config,
+        [FromQuery] string range = "30D", CancellationToken ct = default)
+    {
+        if (!Auth(ctx, config)) return Results.Unauthorized();
+
+        var (cutoff, _) = Range(range);
+
+        // Each session is classified into exactly ONE highest stage reached (set once the
+        // session ends, by SessionFinalizationService) — no double-counting across stages.
+        // Reconstruct the classic decreasing funnel by summing forward: a session's final
+        // stage implicitly means it also passed through every earlier stage.
+        var rawCounts = await db.SessionFunnelStatuses
+            .Where(s => s.IsFinalized)
+            .Join(db.ChatSessions, s => s.SessionId, c => c.SessionId, (s, c) => new { s.FunnelStage, c.CreatedAt })
+            .Where(x => x.CreatedAt >= cutoff)
+            .GroupBy(x => x.FunnelStage)
+            .Select(g => new { stage = g.Key, count = g.Count() })
+            .ToListAsync(ct);
+
+        var rawMap = rawCounts.ToDictionary(x => x.stage, x => x.count);
+
+        var counts = new int[FunnelStageOrder.Length];
+        for (var i = 0; i < FunnelStageOrder.Length; i++)
+            for (var j = i; j < FunnelStageOrder.Length; j++)
+                counts[i] += rawMap.GetValueOrDefault(FunnelStageOrder[j], 0);
+
+        var names = FunnelStageLabels;
+
+        double? DropOff(int prevCount, int currCount) =>
+            prevCount > 0 ? Math.Round((1 - (double)currCount / Math.Max(prevCount, 1)) * 100, 1) : (double?)null;
+
+        var stages = new List<object>();
+        string? worstStage = null;
+        var worstDropOff = -1.0;
+
+        for (var i = 0; i < counts.Length; i++)
+        {
+            double? dropOffPct = i == 0 ? null : DropOff(counts[i - 1], counts[i]);
+            stages.Add(new { stage = names[i], count = counts[i], dropOffPct });
+
+            if (dropOffPct.HasValue && dropOffPct.Value > worstDropOff)
+            {
+                worstDropOff = dropOffPct.Value;
+                worstStage = $"{names[i - 1]} → {names[i]}";
+            }
+        }
+
+        return Results.Ok(new
+        {
+            stages,
+            worstDropOffStage = worstStage,
+            range,
+        });
     }
 
     // ── Product Intelligence ───────────────────────────────────────────────────
@@ -895,23 +1073,6 @@ public static class InsightsV2Endpoints
             .ToList();
     }
 
-    private static int ScoreLead(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query)) return 20;
-        var lq = query.ToLower();
-        var score = 20; // base — keyword bonuses lift from here
-        // Length bonus: longer queries indicate more serious intent
-        if (query.Length >= 30)  score += 10;
-        if (query.Length >= 80)  score += 5;
-        if (query.Length >= 150) score += 5;
-        // Keyword bonuses
-        if (ContainsAny(lq, "hotel","hospitality","resort","villa","campus","hospital","university","airport","museum")) score += 20;
-        if (ContainsAny(lq, "spec","specification","project","design","tender","lighting","luminaire","fixture","bega"))  score += 15;
-        if (ContainsAny(lq, "budget","cost","price","quantity","bom","quote","procurement","purchase"))                   score += 10;
-        if (ContainsAny(lq, "urgent","asap","deadline","soon","immediately"))                                              score += 15;
-        return Math.Min(score, 99);
-    }
-
     // Returns false for clearly non-product submissions: site-error fallbacks,
     // random-character test entries, or queries shorter than a real inquiry.
     private static bool IsValidLeadQuery(string query)
@@ -1039,12 +1200,20 @@ public static class InsightsV2Endpoints
             .Select(e => e.Name!)
             .ToListAsync(ct);
 
-        var leadQ          = allLeads.Select(l => l.Query.ToLower()).ToList();
-        var allQ           = recentQueries.Select(q => q.ToLower()).ToList();
-        var scores         = leadQ.Select(q => ScoreLead(q)).ToList();
-        var highQuality    = scores.Count(s => s >= 75);
-        var highQualityPct = (int)Math.Round((double)highQuality / Math.Max(leadQ.Count, 1) * 100);
-        var avgScore       = scores.Any() ? (int)Math.Round(scores.Average()) : 0;
+        var leadQ = allLeads.Select(l => l.Query.ToLower()).ToList();
+        var allQ  = recentQueries.Select(q => q.ToLower()).ToList();
+
+        // "High quality" is now the AI's own hot/warm/cold call (SessionFunnelStatus.LeadTemperature),
+        // not a keyword-scored heuristic — there is no numeric lead score anywhere in this system.
+        var temperatureCounts = await db.SessionFunnelStatuses
+            .Where(s => s.IsFinalized && s.IsLead)
+            .GroupBy(s => s.LeadTemperature)
+            .Select(g => new { Temperature = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var hotCount       = temperatureCounts.FirstOrDefault(t => t.Temperature == "hot")?.Count ?? 0;
+        var leadTempTotal  = temperatureCounts.Sum(t => t.Count);
+        var highQuality    = hotCount;
+        var highQualityPct = (int)Math.Round((double)hotCount / Math.Max(leadTempTotal, 1) * 100);
 
         List<object> cards;
         try
@@ -1059,7 +1228,7 @@ public static class InsightsV2Endpoints
         catch
         {
             cards = BuildLeadInsightCards(leadQ, allQ, totalLeads, totalSessions, convRate,
-                highQuality, highQualityPct, avgScore);
+                highQuality, highQualityPct);
         }
 
         var sorted = cards
@@ -1204,7 +1373,7 @@ public static class InsightsV2Endpoints
             - Total leads captured: {{totalLeads}}
             - Total chat sessions: {{totalSessions}}
             - Lead conversion rate: {{convRate}}%
-            - High-quality leads (score ≥75): {{highQuality}} of {{totalLeads}} ({{highQualityPct}}%)
+            - AI-classified hot leads: {{highQuality}} of {{totalLeads}} ({{highQualityPct}}%)
             - Top query topics: {{(string.IsNullOrEmpty(topicsText) ? "insufficient data" : topicsText)}}
 
             ## Recent Lead Inquiries (what users who submitted leads actually wrote)
@@ -1285,7 +1454,7 @@ public static class InsightsV2Endpoints
     private static List<object> BuildLeadInsightCards(
         List<string> leadQ, List<string> allQ,
         int totalLeads, int totalSessions, double convRate,
-        int highQuality, int highQualityPct, int avgScore)
+        int highQuality, int highQualityPct)
     {
         var cards  = new List<object>();
         var lTotal = Math.Max(leadQ.Count, 1);
@@ -1299,8 +1468,8 @@ public static class InsightsV2Endpoints
                 score    = Math.Min(99, 55 + (int)(highQualityPct * 0.44)),
                 title    = $"{highQualityPct}% of leads show strong buying intent",
                 summary  = $"The AI advisor is attracting specification-ready prospects. {highQuality} of {totalLeads} leads score above 75, indicating project-ready buyers with clear requirements.",
-                evidence = $"Average lead quality score: {avgScore}/99. {highQuality} leads ({highQualityPct}%) score ≥ 75, signalling project names, budgets, or specific product specifications — your warmest prospects.",
-                action   = "Prioritise outreach to leads scoring above 75. Their queries contain specific project context that enables high-conversion personalised engagement.",
+                evidence = $"{highQuality} leads ({highQualityPct}%) were AI-classified as hot, signalling project names, budgets, or specific product specifications — your warmest prospects.",
+                action   = "Prioritise outreach to hot-classified leads. Their conversations contain specific project context that enables high-conversion personalised engagement.",
                 impact   = "Focused follow-up on high-intent leads typically reduces sales cycle length and increases specification close rates.",
                 trend    = Math.Max(0, highQualityPct - 40),
             });
@@ -1311,8 +1480,8 @@ public static class InsightsV2Endpoints
                 category = "OPPORTUNITY",
                 score    = 84,
                 title    = "Lead quality enrichment would unlock higher-value sales opportunities",
-                summary  = $"Current leads average {avgScore}/99 quality score. Adding contextual fields to Connect with BEGA would attract and identify specification-ready buyers earlier.",
-                evidence = $"Only {highQuality} of {totalLeads} leads ({highQualityPct}%) score above 75. Most reflect early-stage exploration. Richer qualification data enables smarter sales prioritisation.",
+                summary  = $"Only {highQualityPct}% of leads are AI-classified as hot. Adding contextual fields to Connect with BEGA would attract and identify specification-ready buyers earlier.",
+                evidence = $"Only {highQuality} of {totalLeads} leads ({highQualityPct}%) were classified hot. Most reflect early-stage exploration. Richer qualification data enables smarter sales prioritisation.",
                 action   = "Add Project Type, Timeline, and Estimated Budget fields to the Connect with BEGA form to improve lead data quality and scoring.",
                 impact   = "Better qualification data reduces wasted sales effort and directs attention to highest-probability active specifications.",
                 trend    = 0,

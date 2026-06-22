@@ -8,6 +8,7 @@ import ExecutiveBrief from '../widgets/ExecutiveBrief';
 import KPICardV2 from '../widgets/KPICardV2';
 import AnimatedBanner from '../widgets/AnimatedBanner';
 import LeadInsightCard from '../widgets/LeadInsightCard';
+import FunnelChart from '../widgets/FunnelChart';
 import { useGSAPEntrance, useGSAPScrollReveal } from '@/hooks/useGSAPEntrance';
 import LineChart from '../LineChart';
 
@@ -45,9 +46,10 @@ export default function CommandCenterTab() {
   const [leadData, setLeadData]       = useState<LeadInsightsData | null>(null);
   const [leadLoading, setLeadLoading] = useState(true);
 
-  const kpiRef   = useGSAPEntrance(0.08, [loading]);
-  const chartRef = useGSAPScrollReveal();
-  const cardsRef = useGSAPEntrance(0.06, [leadLoading]);
+  const kpiRef    = useGSAPEntrance(0.08, [loading]);
+  const funnelRef = useGSAPScrollReveal();
+  const chartRef  = useGSAPScrollReveal();
+  const cardsRef  = useGSAPEntrance(0.06, [leadLoading]);
 
   useEffect(() => {
     setLoading(true);
@@ -109,6 +111,13 @@ export default function CommandCenterTab() {
           )}
         </div>
       )}
+
+      {/* Conversion funnel */}
+      <div ref={funnelRef} className="bg-white border border-bega-border-1 rounded-2xl p-5">
+        <p className="text-[13px] font-semibold text-bega-text-1 mb-1">Conversion Funnel</p>
+        <p className="text-[11px] text-bega-text-3 mb-4">Query → Product Viewed → Shortlisted → BOM Generated → Lead Captured</p>
+        <FunnelChart range={range} />
+      </div>
 
       {/* Activity chart */}
       <div ref={chartRef} className="bg-white border border-bega-border-1 rounded-2xl p-5">

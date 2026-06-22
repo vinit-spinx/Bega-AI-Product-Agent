@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import PageHeader from '@/components/admin/PageHeader';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';
+import { FilterBar, PaginationFooter } from '@/components/admin/DataTableControls';
+
+const PAGE_SIZE = 15;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY ?? '';
@@ -129,16 +132,32 @@ function InquiryCard({
 export default function InquiriesPage() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Inquiry | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+
+  // Debounce the search box so we don't hit the server on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { setPage(1); }, [debouncedSearch, from, to]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/api/admin/cms/inquiries?pageSize=200`, {
+      const qs = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (debouncedSearch) qs.set('search', debouncedSearch);
+      if (from) qs.set('from', from);
+      if (to) qs.set('to', to);
+      const res = await fetch(`${API_URL}/api/admin/cms/inquiries?${qs.toString()}`, {
         headers: { 'X-Admin-Api-Key': ADMIN_KEY },
       });
       if (!res.ok) throw new Error(`${res.status}`);
@@ -150,7 +169,7 @@ export default function InquiriesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, debouncedSearch, from, to]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -165,12 +184,7 @@ export default function InquiriesPage() {
     setDeleteTarget(null);
   };
 
-  const filtered = inquiries.filter(i =>
-    !search ||
-    i.name.toLowerCase().includes(search.toLowerCase()) ||
-    i.email.toLowerCase().includes(search.toLowerCase()) ||
-    i.query.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = inquiries;
 
   return (
     <div className="px-8 py-8">
@@ -180,22 +194,21 @@ export default function InquiriesPage() {
         count={total}
       />
 
-      {/* Search */}
-      <div className="mt-6 mb-4 relative max-w-sm">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}
-             strokeLinecap="round" className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-bega-text-3 pointer-events-none">
-          <circle cx="6.5" cy="6.5" r="4" />
-          <path d="M11 11l3 3" />
-        </svg>
-        <input
-          type="text"
-          placeholder="Search by name, email or message…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full pl-8 pr-4 py-2 rounded-xl border border-bega-border-2 text-[13px]
-                     text-bega-text-1 placeholder:text-bega-text-3 bg-white
-                     focus:outline-none focus:ring-2 focus:ring-bega-black/10 focus:border-bega-black/40
-                     transition-colors"
+      {/* Search & filters */}
+      <div className="mt-6">
+        <FilterBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by name, email or message…"
+          filters={[
+            { key: 'from', label: 'From', type: 'date' },
+            { key: 'to', label: 'To', type: 'date' },
+          ]}
+          filterValues={{ from, to }}
+          onFilterChange={(key, value) => {
+            if (key === 'from') setFrom(value);
+            if (key === 'to') setTo(value);
+          }}
         />
       </div>
 
@@ -234,15 +247,18 @@ export default function InquiriesPage() {
       )}
 
       {!loading && !error && filtered.length > 0 && (
-        <div className="space-y-3">
-          {filtered.map(inquiry => (
-            <InquiryCard
-              key={inquiry.inquiryId}
-              inquiry={inquiry}
-              onDelete={() => setDeleteTarget(inquiry)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {filtered.map(inquiry => (
+              <InquiryCard
+                key={inquiry.inquiryId}
+                inquiry={inquiry}
+                onDelete={() => setDeleteTarget(inquiry)}
+              />
+            ))}
+          </div>
+          <PaginationFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+        </>
       )}
 
       {deleteTarget && (

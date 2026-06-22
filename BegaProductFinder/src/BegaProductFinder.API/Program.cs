@@ -65,6 +65,8 @@ builder.Services.AddScoped<IFurnitureSearchService, FurnitureSearchService>();
 builder.Services.AddScoped<IProjectRecommendationService, ProjectRecommendationService>();
 builder.Services.AddScoped<IBillOfMaterialsService, BillOfMaterialsService>();
 builder.Services.AddScoped<IChatSessionService, ChatSessionService>();
+builder.Services.AddScoped<ISessionFinalizationService, SessionFinalizationService>();
+builder.Services.AddHostedService<SessionSweepService>();
 
 // ── Depth analysis sidecar (Depth Anything V2) ───────────────────────────────
 builder.Services.AddScoped<DepthAnalysisService>();

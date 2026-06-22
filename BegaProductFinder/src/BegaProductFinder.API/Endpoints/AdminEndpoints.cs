@@ -260,12 +260,27 @@ public static class AdminEndpoints
     private static async Task<IResult> GetInquiriesAsync(
         HttpContext httpContext, AppDbContext db, IConfiguration config,
         CancellationToken ct,
-        int page = 1, int pageSize = 50)
+        int page = 1, int pageSize = 15, string? search = null,
+        DateTime? from = null, DateTime? to = null)
     {
         if (!IsAuthorized(httpContext, config)) return Results.Unauthorized();
-        var total = await db.ContactInquiries.CountAsync(ct);
-        var items = await db.ContactInquiries
-            .AsNoTracking()
+
+        page     = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        // Only "Connect with BEGA" submissions belong here — quote requests (shortlist/BOM-backed)
+        // surface via the Lead Pipeline / Conversation & Logs views instead.
+        var baseQuery = db.ContactInquiries.AsNoTracking().Where(i => i.Source == "inquiry");
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            baseQuery = baseQuery.Where(i =>
+                i.Name.Contains(search) || i.Email.Contains(search) || i.Query.Contains(search));
+        }
+        if (from.HasValue) baseQuery = baseQuery.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue)   baseQuery = baseQuery.Where(i => i.CreatedAt <= to.Value);
+
+        var total = await baseQuery.CountAsync(ct);
+        var items = await baseQuery
             .OrderByDescending(i => i.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

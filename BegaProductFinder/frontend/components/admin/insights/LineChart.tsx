@@ -62,6 +62,14 @@ export default function LineChart({ data, series, height = 200, showDots = true 
 
   return (
     <div className="w-full overflow-hidden">
+      <div className="flex items-center gap-4 mb-2">
+        {series.map(s => (
+          <div key={s.key} className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
+            <span className="text-[11px] text-bega-text-2">{s.label}</span>
+          </div>
+        ))}
+      </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: `${height}px` }}>
         <defs>
           {series.map(s => (

@@ -35,6 +35,35 @@ public sealed class ContactInquiryConfiguration : IEntityTypeConfiguration<Conta
                .HasDefaultValueSql("GETUTCDATE()")
                .ValueGeneratedOnAdd();
 
+        builder.Property(c => c.Company)
+               .HasMaxLength(200);
+
+        builder.Property(c => c.ShortlistJson)
+               .HasColumnType("nvarchar(max)");
+
+        builder.Property(c => c.BomReportJson)
+               .HasColumnType("nvarchar(max)");
+
+        builder.Property(c => c.Source)
+               .HasMaxLength(50)
+               .HasDefaultValue("inquiry")
+               .IsRequired();
+
+        builder.Property(c => c.Designation)
+               .HasMaxLength(100);
+
+        builder.Property(c => c.ProjectType)
+               .HasMaxLength(100);
+
+        builder.Property(c => c.Location)
+               .HasMaxLength(200);
+
+        builder.Property(c => c.Contact)
+               .HasMaxLength(100);
+
+        builder.Property(c => c.Message)
+               .HasColumnType("nvarchar(max)");
+
         // Fast lookup of all inquiries for a session
         builder.HasIndex(c => c.SessionId);
 

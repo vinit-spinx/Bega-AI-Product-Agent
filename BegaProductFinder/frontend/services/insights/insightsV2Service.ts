@@ -62,13 +62,12 @@ export interface LeadMetrics {
   trend: number;
 }
 
-// Matches backend: { name, email, preview, date, score }
+// Matches backend: { name, email, preview, date }
 export interface RecentLead {
   name: string;
   email: string;
   preview: string;
   date: string;
-  score: number;
 }
 
 export interface LeadData {
@@ -183,6 +182,9 @@ export interface LeadInsightsData {
   conversionRate: number;
 }
 
+/** 'cold' | 'warm' | 'hot' — AI-classified lead temperature, replaces the old numeric score. */
+export type LeadTemperature = 'cold' | 'warm' | 'hot';
+
 export interface LeadTableRow {
   id: number;
   sessionId: string;
@@ -191,12 +193,74 @@ export interface LeadTableRow {
   query: string;
   preview: string;
   date: string;
-  score: number;
+  temperature: LeadTemperature;
+  /** 'inquiry' (generic "Connect with BEGA Team") | 'quote_request' (shortlist/BOM-backed) | null (AI-only lead, no form). */
+  source: string | null;
+  company: string | null;
+  /** Raw JSON string — parse with JSON.parse, same pattern as colorTemperatureJson elsewhere. */
+  shortlistJson: string | null;
+  /** Raw JSON string — parse with JSON.parse to get a BomReport-shaped object. */
+  bomReportJson: string | null;
+}
+
+export interface LeadTableParams {
+  page?: number;
+  pageSize?: number;
+  temperature?: LeadTemperature | '';
+  source?: string;
+  search?: string;
+}
+
+export interface ConversationRow {
+  sessionId: string;
+  name: string;
+  email: string | null;
+  stage: string;
+  isLead: boolean;
+  temperature: LeadTemperature | null;
+  summary: string | null;
+  messageCount: number;
+  lastActivityAt: string;
+}
+
+export interface ConversationTableParams {
+  page?: number;
+  pageSize?: number;
+  stage?: string;
+  temperature?: LeadTemperature | '';
+  isLead?: boolean;
+  search?: string;
+  from?: string;
+  to?: string;
+}
+
+// ── Conversion funnel ─────────────────────────────────────────────────────────
+
+export interface FunnelStageData {
+  stage: string;
+  count: number;
+  dropOffPct: number | null;
+}
+
+export interface FunnelData {
+  stages: FunnelStageData[];
+  worstDropOffStage: string | null;
+  range: string;
 }
 
 export interface LeadTableData {
   leads: LeadTableRow[];
   count: number;
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface ConversationTableData {
+  items: ConversationRow[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface ChatMessage {
@@ -209,7 +273,22 @@ export interface ChatMessage {
 
 export type TimeRange = '7D' | '30D' | '90D' | '12M';
 
-export const fetchLeadTable      = ()                          => get<LeadTableData>('/api/admin/insights/v2/lead-table');
+function toQueryString(params: object): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    qs.set(key, String(value));
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+export const fetchLeadTable = (params: LeadTableParams = {}) =>
+  get<LeadTableData>(`/api/admin/insights/v2/lead-table${toQueryString(params)}`);
+
+export const fetchConversations = (params: ConversationTableParams = {}) =>
+  get<ConversationTableData>(`/api/admin/insights/v2/conversations${toQueryString(params)}`);
+export const fetchFunnel         = (range: TimeRange = '30D')  => get<FunnelData>(`/api/admin/insights/v2/funnel?range=${range}`);
 
 export async function fetchSessionConversation(sessionId: string): Promise<{ messages: ChatMessage[] }> {
   const res = await fetch(`${API_URL}/api/chat/session/${sessionId}`);

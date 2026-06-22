@@ -23,4 +23,31 @@ public class ContactInquiry
 
     /// <summary>UTC timestamp when the inquiry was submitted.</summary>
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>Visitor's company name. Only populated for "Request a Quote" submissions.</summary>
+    public string? Company { get; set; }
+
+    /// <summary>JSON array of shortlist entries ({ catalogNumber, quantity, kind }) attached at submission time.</summary>
+    public string? ShortlistJson { get; set; }
+
+    /// <summary>JSON-serialized <c>BomReport</c> attached at submission time, if a BOM had been generated.</summary>
+    public string? BomReportJson { get; set; }
+
+    /// <summary>'inquiry' (generic "Connect with BEGA Team") | 'quote_request' (shortlist/BOM-backed).</summary>
+    public string Source { get; set; } = "inquiry";
+
+    /// <summary>Visitor's role e.g. Architect, Electrician, Contractor. Only populated for quote requests.</summary>
+    public string? Designation { get; set; }
+
+    /// <summary>Project type e.g. Hospitality, Residential. Only populated for quote requests.</summary>
+    public string? ProjectType { get; set; }
+
+    /// <summary>Project or site location. Only populated for quote requests.</summary>
+    public string? Location { get; set; }
+
+    /// <summary>Phone number or other contact detail, distinct from Email. Only populated for quote requests.</summary>
+    public string? Contact { get; set; }
+
+    /// <summary>Visitor's freeform message. Only populated for quote requests — distinct from the synthesized Query summary.</summary>
+    public string? Message { get; set; }
 }

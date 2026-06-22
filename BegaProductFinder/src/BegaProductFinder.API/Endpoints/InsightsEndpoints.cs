@@ -352,7 +352,8 @@ public static class InsightsEndpoints
         CancellationToken ct)
     {
         // Validate
-        if (req.Type is not ("query" or "action_click" or "suggestion_click"))
+        if (req.Type is not ("query" or "action_click" or "suggestion_click"
+            or "product_viewed" or "shortlisted" or "unshortlisted" or "bom_generated" or "lead_captured"))
             return Results.BadRequest(new { error = "Unknown event type." });
 
         if (string.IsNullOrWhiteSpace(req.Name) && req.Type != "query")

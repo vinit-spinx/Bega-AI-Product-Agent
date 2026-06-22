@@ -39,6 +39,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// <summary>Lightweight event log for AI usage analytics (queries, action clicks, suggestion clicks).</summary>
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
 
+    /// <summary>Per-session AI-generated summary, funnel stage classification, and lead temperature.</summary>
+    public DbSet<SessionFunnelStatus> SessionFunnelStatuses => Set<SessionFunnelStatus>();
+
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

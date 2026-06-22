@@ -4,6 +4,7 @@ using BegaProductFinder.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BegaProductFinder.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260619045539_AddQuoteRequestDetailFields")]
+    partial class AddQuoteRequestDetailFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -801,53 +804,6 @@ namespace BegaProductFinder.Infrastructure.Data.Migrations
                     b.HasIndex("ProductId");
 
                     b.ToTable("ProductProjects", (string)null);
-                });
-
-            modelBuilder.Entity("BegaProductFinder.Core.Models.SessionFunnelStatus", b =>
-                {
-                    b.Property<Guid>("SessionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<DateTime?>("FinalizedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("FunnelStage")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("query");
-
-                    b.Property<bool>("IsFinalized")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<bool>("IsLead")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("LeadTemperature")
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
-                    b.Property<string>("Summary")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("SessionId");
-
-                    b.HasIndex("FunnelStage");
-
-                    b.HasIndex("IsFinalized");
-
-                    b.HasIndex("IsLead");
-
-                    b.ToTable("SessionFunnelStatuses", (string)null);
                 });
 
             modelBuilder.Entity("BegaProductFinder.Core.Models.ProductAccessory", b =>

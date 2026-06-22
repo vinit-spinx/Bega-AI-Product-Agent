@@ -1,6 +1,14 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
-type EventType = 'action_click' | 'suggestion_click';
+type EventType =
+  | 'action_click'
+  | 'suggestion_click'
+  | 'query'             // server-fired only today, included for type completeness
+  | 'product_viewed'
+  | 'shortlisted'
+  | 'unshortlisted'
+  | 'bom_generated'
+  | 'lead_captured';
 
 /**
  * Fire-and-forget analytics event. Never throws — failures are silently swallowed

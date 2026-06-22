@@ -197,7 +197,7 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
         hasProducts={hasProducts}
         onActiveChange={(active) => { tourActiveRef.current = active; }}
       />
-      <CompareDrawer />
+      <CompareDrawer sessionId={sessionId} onDone={handleNewChat} />
     </div>
   );
 }

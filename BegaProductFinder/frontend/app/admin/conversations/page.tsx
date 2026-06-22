@@ -1,15 +1,15 @@
 'use client';
 
-import LeadPipelineTab from '@/components/admin/insights/tabs/LeadPipelineTab';
+import ConversationsTab from '@/components/admin/insights/tabs/ConversationsTab';
 
-export default function LeadPipelinePage() {
+export default function ConversationsPage() {
   return (
     <div className="px-6 py-7">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-[22px] font-semibold text-bega-text-1 tracking-tight mb-1">Lead Pipeline</h1>
+          <h1 className="text-[22px] font-semibold text-bega-text-1 tracking-tight mb-1">Conversation &amp; Logs</h1>
           <p className="text-[13px] text-bega-text-3">
-            Every captured lead, AI-classified as cold, warm, or hot, with the full conversation behind it.
+            Every finished chat session, with an AI-generated summary and the full transcript behind it.
           </p>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-bega-text-3 mt-1">
@@ -18,7 +18,7 @@ export default function LeadPipelinePage() {
         </div>
       </div>
 
-      <LeadPipelineTab />
+      <ConversationsTab />
     </div>
   );
 }
