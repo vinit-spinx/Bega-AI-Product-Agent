@@ -70,6 +70,7 @@ builder.Services.AddScoped<IBillOfMaterialsService, BillOfMaterialsService>();
 builder.Services.AddScoped<IChatSessionService, ChatSessionService>();
 builder.Services.AddScoped<ISessionFinalizationService, SessionFinalizationService>();
 builder.Services.AddHostedService<SessionSweepService>();
+builder.Services.AddScoped<IRepresentativeService, RepresentativeService>();
 
 // ── Depth analysis sidecar (Depth Anything V2) ───────────────────────────────
 builder.Services.AddScoped<DepthAnalysisService>();
