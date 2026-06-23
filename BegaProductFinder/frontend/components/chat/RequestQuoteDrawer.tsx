@@ -6,7 +6,8 @@ import { useShortlist } from '@/context/ShortlistContext';
 import { trackEvent } from '@/services/insights/analyticsTracker';
 import {
   StepDots, FormStep, FormActions, ErrorMsg,
-  TextField, SelectField, TextAreaField,
+  TextField, SelectField, TextAreaField, LocationAutocompleteField,
+  type GeocodeResult,
 } from './ContactFormSteps';
 
 const DESIGNATIONS = ['Architect', 'Electrician', 'Contractor', 'Interior Designer', 'Lighting Designer', 'End User', 'Other'];
@@ -37,6 +38,7 @@ export default function RequestQuoteDrawer({
   const [company, setCompany] = useState('');
   const [projectType, setProjectType] = useState('');
   const [location, setLocation] = useState('');
+  const [locationGeo, setLocationGeo] = useState<GeocodeResult | null>(null);
   const [contact, setContact] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -89,6 +91,11 @@ export default function RequestQuoteDrawer({
           location: location.trim(),
           contact: contact.trim() || undefined,
           message: message.trim(),
+          latitude: locationGeo?.lat,
+          longitude: locationGeo?.lon,
+          city: locationGeo?.city ?? undefined,
+          country: locationGeo?.country ?? undefined,
+          countryCode: locationGeo?.countryCode ?? undefined,
           shortlist: entries.map(e => ({
             catalogNumber: e.catalogNumber,
             quantity: e.quantity,
@@ -208,7 +215,14 @@ export default function RequestQuoteDrawer({
                 <FormStep label="Tell us about the project" hint="Step 2 of 3">
                   <div className="space-y-3">
                     <SelectField label="Project Type" value={projectType} onChange={setProjectType} options={PROJECT_TYPES} optional />
-                    <TextField label="Location" value={location} onChange={setLocation} placeholder="Project or site location" autoFocus />
+                    <LocationAutocompleteField
+                      label="Location"
+                      value={location}
+                      onChange={setLocation}
+                      onSelect={setLocationGeo}
+                      placeholder="Project or site location"
+                      autoFocus
+                    />
                     <TextField label="Contact" type="tel" value={contact} onChange={setContact} placeholder="Phone number" optional />
                   </div>
                   {error && <ErrorMsg msg={error} />}

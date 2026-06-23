@@ -17,6 +17,7 @@ public static class WebApplicationExtensions
         ProjectEndpoints.Map(app);
         BomEndpoints.Map(app);
         ContactEndpoints.Map(app);
+        GeocodeEndpoints.Map(app);
         AdminEndpoints.Map(app);
         ContentEndpoints.Map(app);
         InsightsEndpoints.Map(app);

@@ -64,6 +64,15 @@ public sealed class ContactInquiryConfiguration : IEntityTypeConfiguration<Conta
         builder.Property(c => c.Message)
                .HasColumnType("nvarchar(max)");
 
+        builder.Property(c => c.City)
+               .HasMaxLength(200);
+
+        builder.Property(c => c.Country)
+               .HasMaxLength(100);
+
+        builder.Property(c => c.CountryCode)
+               .HasMaxLength(10);
+
         // Fast lookup of all inquiries for a session
         builder.HasIndex(c => c.SessionId);
 

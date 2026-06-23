@@ -153,6 +153,11 @@ public static class ContactEndpoints
             Location      = request.Location.Trim(),
             Contact       = request.Contact?.Trim(),
             Message       = request.Message.Trim(),
+            Latitude      = request.Latitude,
+            Longitude     = request.Longitude,
+            City          = request.City?.Trim(),
+            Country       = request.Country?.Trim(),
+            CountryCode   = request.CountryCode?.Trim().ToLowerInvariant(),
         };
 
         var logger = loggerFactory.CreateLogger("ContactEndpoints");
@@ -417,5 +422,10 @@ public sealed record SubmitQuoteRequest(
     string? Contact,
     string Message,
     List<QuoteShortlistItem>? Shortlist,
-    BomReport? BomReport
+    BomReport? BomReport,
+    double? Latitude = null,
+    double? Longitude = null,
+    string? City = null,
+    string? Country = null,
+    string? CountryCode = null
 );

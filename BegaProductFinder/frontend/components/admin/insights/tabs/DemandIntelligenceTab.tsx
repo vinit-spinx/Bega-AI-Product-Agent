@@ -1,22 +1,24 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import {
-  fetchProducts, fetchSpecifications, fetchContentIntel,
-  type ProductData, type SpecData, type ContentData,
+  fetchProducts, fetchSpecifications, fetchContentIntel, fetchGeography,
+  type ProductData, type SpecData, type ContentData, type GeographyData,
 } from '@/services/insights/insightsV2Service';
 import AnimatedBanner from '../widgets/AnimatedBanner';
 import SegmentedNav from '../SegmentedNav';
+import WorldMap from '../widgets/WorldMap';
 import { useGSAPEntrance, useGSAPScrollReveal } from '@/hooks/useGSAPEntrance';
 
 const CAT_COLORS = ['#1A1A1A', '#5A5750', '#9A9590', '#B5A99A', '#D5CFC9', '#E5E0DB'];
 const HIGH_FREQ_LIMIT = 5;
 
-type Segment = 'category' | 'specification' | 'content';
+type Segment = 'category' | 'specification' | 'content' | 'geographic';
 
 const SEGMENTS: { id: Segment; label: string }[] = [
   { id: 'category',      label: 'Category' },
   { id: 'specification', label: 'Specification' },
   { id: 'content',       label: 'Content' },
+  { id: 'geographic',    label: 'Geographic' },
 ];
 
 // ── Category panel — product demand ────────────────────────────────────────
@@ -386,6 +388,73 @@ function ContentPanel() {
   );
 }
 
+// ── Geographic panel ─────────────────────────────────────────────────────────
+
+function GeographicPanel() {
+  const [data, setData]       = useState<GeographyData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const listRef = useGSAPEntrance(0.07, [loading]);
+  const mapRef  = useGSAPScrollReveal();
+
+  useEffect(() => {
+    fetchGeography().then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+  }, []);
+
+  const topCount = data?.countries[0]?.count ?? 1;
+
+  if (!loading && (!data || data.totalGeotagged === 0)) {
+    return (
+      <div className="bg-white border border-bega-border-1 rounded-2xl py-10 text-center">
+        <p className="text-[13px] font-medium text-bega-text-2 mb-1">No geographic data yet</p>
+        <p className="text-[12px] text-bega-text-3">
+          This view populates once visitors submit a Request a Quote form with a resolved location.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div ref={mapRef} className="xl:col-span-2 bg-white border border-bega-border-1 rounded-2xl p-5">
+        <p className="text-[13px] font-semibold text-bega-text-1 mb-1">Geographic Interest</p>
+        <p className="text-[11px] text-bega-text-3 mb-4">Where Request a Quote submissions originate</p>
+        {loading ? (
+          <div className="h-[280px] bg-bega-bg-1 rounded-xl animate-pulse" />
+        ) : (
+          <WorldMap cities={data!.cities} height={280} />
+        )}
+      </div>
+
+      <div ref={listRef} className="bg-white border border-bega-border-1 rounded-2xl p-5">
+        <p className="text-[13px] font-semibold text-bega-text-1 mb-1">Top Countries</p>
+        <p className="text-[11px] text-bega-text-3 mb-4">By quote request volume</p>
+        {loading ? (
+          <div className="space-y-3 animate-pulse">
+            {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-6 bg-bega-bg-1 rounded-xl" />)}
+          </div>
+        ) : data?.countries.length ? (
+          <div className="space-y-3">
+            {data.countries.slice(0, 8).map(c => {
+              const widthPct = topCount > 0 ? Math.round((c.count / topCount) * 100) : 0;
+              return (
+                <div key={c.country}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12px] font-medium text-bega-text-1">{c.country}</span>
+                    <span className="text-[11px] font-bold text-bega-text-1">{c.count} · {c.pct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-bega-bg-2 rounded-full overflow-hidden">
+                    <div className="h-full bg-bega-black rounded-full" style={{ width: `${widthPct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 // ── Main tab ──────────────────────────────────────────────────────────────────
 
 export default function DemandIntelligenceTab() {
@@ -419,6 +488,7 @@ export default function DemandIntelligenceTab() {
         {segment === 'category'      && <CategoryPanel />}
         {segment === 'specification' && <SpecificationPanel />}
         {segment === 'content'       && <ContentPanel />}
+        {segment === 'geographic'    && <GeographicPanel />}
       </div>
     </div>
   );

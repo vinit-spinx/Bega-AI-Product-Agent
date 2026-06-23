@@ -1,5 +1,7 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
+
 // Shared sub-components for multi-step contact forms in chat — used by both
 // NextStepsPanel.tsx ("Connect with BEGA Team") and RequestQuoteDrawer.tsx ("Request a Quote").
 
@@ -118,6 +120,110 @@ export function TextField({
         autoFocus={autoFocus}
         className={FIELD_CLASS}
       />
+    </div>
+  );
+}
+
+export interface GeocodeResult {
+  displayName: string;
+  lat: number;
+  lon: number;
+  city: string | null;
+  country: string | null;
+  countryCode: string | null;
+}
+
+/** Location field with live OpenStreetMap (Nominatim) suggestions — falls back to plain free text if nothing is selected. */
+export function LocationAutocompleteField({
+  label,
+  value,
+  onChange,
+  onSelect,
+  placeholder,
+  autoFocus = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSelect: (result: GeocodeResult | null) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(value.trim())}`);
+        const data = await res.json().catch(() => []);
+        setSuggestions(Array.isArray(data) ? data : []);
+        setOpen(true);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handlePick = (s: GeocodeResult) => {
+    onChange(s.displayName);
+    onSelect(s);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="text-bega-text-2 text-[11px] font-medium mb-1 block">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={e => { onChange(e.target.value); onSelect(null); }}
+        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        autoComplete="off"
+        className={FIELD_CLASS}
+      />
+      {open && (suggestions.length > 0 || loading) && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-bega-border-2 rounded-md shadow-lg
+                         max-h-56 overflow-y-auto">
+          {loading ? (
+            <p className="px-3 py-2.5 text-[12px] text-bega-text-3">Searching…</p>
+          ) : (
+            suggestions.map((s, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handlePick(s)}
+                className="w-full text-left px-3 py-2.5 text-[12px] text-bega-text-1 hover:bg-bega-bg-1
+                           transition-colors border-b border-bega-border-1 last:border-b-0"
+              >
+                {s.displayName}
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

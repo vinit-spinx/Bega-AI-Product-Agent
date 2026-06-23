@@ -50,4 +50,19 @@ public class ContactInquiry
 
     /// <summary>Visitor's freeform message. Only populated for quote requests — distinct from the synthesized Query summary.</summary>
     public string? Message { get; set; }
+
+    /// <summary>Latitude resolved from the Location field via geocoding. Null if the visitor's text was never geocoded.</summary>
+    public double? Latitude { get; set; }
+
+    /// <summary>Longitude resolved from the Location field via geocoding. Null if the visitor's text was never geocoded.</summary>
+    public double? Longitude { get; set; }
+
+    /// <summary>City resolved from the Location field via geocoding.</summary>
+    public string? City { get; set; }
+
+    /// <summary>Country resolved from the Location field via geocoding.</summary>
+    public string? Country { get; set; }
+
+    /// <summary>ISO country code (e.g. "ae", "us") resolved from the Location field via geocoding.</summary>
+    public string? CountryCode { get; set; }
 }

@@ -151,6 +151,82 @@ export interface NetworkData {
   edges: NetworkEdge[];
 }
 
+// ── Geography ─────────────────────────────────────────────────────────────────
+
+export interface GeoCountry {
+  country: string;
+  countryCode: string | null;
+  count: number;
+  pct: number;
+}
+
+export interface GeoCity {
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  count: number;
+}
+
+export interface GeographyData {
+  countries: GeoCountry[];
+  cities: GeoCity[];
+  totalGeotagged: number;
+  totalInquiries: number;
+}
+
+export const fetchGeography = () => get<GeographyData>('/api/admin/insights/v2/geography');
+
+// ── Dashboard (landing page) ──────────────────────────────────────────────────
+
+export interface DashboardKPIs {
+  totalQueries: number;
+  totalQueriesTrend: number;
+  highIntentQueries: number;
+  highIntentTrend: number;
+  suggestionsClicked: number;
+  suggestionsClickedTrend: number;
+  contentGapsFound: number;
+}
+
+export interface DashboardHighFreqQuery {
+  query: string;
+  count: number;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface DashboardRecommendation {
+  title: string;
+  detectedQueries: number;
+  potentialImpactPct: number;
+  priority: string;
+}
+
+export interface DashboardSearchTrendPoint {
+  date: string;
+  queries: number;
+  [key: string]: string | number;
+}
+
+export interface DashboardCategory {
+  category: string;
+  mentions: number;
+  share: number;
+}
+
+export interface DashboardData {
+  kpis: DashboardKPIs;
+  highFrequencyQueries: DashboardHighFreqQuery[];
+  aiRecommendations: DashboardRecommendation[];
+  searchTrend: DashboardSearchTrendPoint[];
+  topCategories: DashboardCategory[];
+  geographic: GeographyData;
+  contentGaps: string[];
+  opportunityScore: number;
+}
+
+export const fetchDashboard = () => get<DashboardData>('/api/admin/insights/v2/dashboard');
+
 // ── Lead Insights (AI opportunity feed) ──────────────────────────────────────
 
 export interface LeadInsightCard {

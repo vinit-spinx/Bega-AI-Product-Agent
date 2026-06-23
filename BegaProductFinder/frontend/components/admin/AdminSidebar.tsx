@@ -175,6 +175,26 @@ export default function AdminSidebar() {
 
       {/* ── Navigation — single parent/child accordion menu ──────────────── */}
       <nav className="flex-1 px-3 pt-3 overflow-y-auto pb-2">
+        <Link
+          href="/admin/dashboard"
+          className={`flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl text-[13px] font-medium
+                      transition-all duration-150
+                      ${pathname.startsWith('/admin/dashboard')
+                        ? 'bg-bega-black text-white'
+                        : 'text-bega-text-2 hover:bg-bega-bg-1 hover:text-bega-text-1'
+                      }`}
+        >
+          <span className={`flex-shrink-0 ${pathname.startsWith('/admin/dashboard') ? 'text-white' : 'text-bega-text-3'}`}>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
+              <rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1" />
+              <rect x="11" y="2.5" width="6.5" height="10.5" rx="1" />
+              <rect x="2.5" y="11" width="6.5" height="6.5" rx="1" />
+              <rect x="11" y="15" width="6.5" height="2.5" rx="0.5" />
+            </svg>
+          </span>
+          Dashboard
+        </Link>
+
         {NAV_SECTIONS.map(section => {
           const isOpen = openSections.has(section.key);
           const sectionActive = section.items.some(i => pathname.startsWith(i.href));

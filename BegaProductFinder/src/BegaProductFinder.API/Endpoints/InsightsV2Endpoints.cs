@@ -41,6 +41,8 @@ public static class InsightsV2Endpoints
         g.MapGet("/content",        GetContentIntelligenceAsync);
         g.MapGet("/opportunities",  GetOpportunitiesAsync);
         g.MapGet("/network",        GetNetworkAsync);
+        g.MapGet("/geography",      GetGeographyAsync);
+        g.MapGet("/dashboard",      GetDashboardAsync);
     }
 
     // ── Overview ──────────────────────────────────────────────────────────────
@@ -995,6 +997,223 @@ public static class InsightsV2Endpoints
         }
 
         return Results.Ok(new { nodes, edges });
+    }
+
+    // ── Geographic Intelligence ────────────────────────────────────────────────
+    // Built entirely from real ContactInquiries rows geocoded at quote-request time
+    // (RequestQuoteDrawer → Nominatim → ContactEndpoints) — no fabricated locations.
+
+    private static async Task<IResult> GetGeographyAsync(
+        HttpContext ctx, AppDbContext db, IConfiguration config, CancellationToken ct = default)
+    {
+        if (!Auth(ctx, config)) return Results.Unauthorized();
+        return Results.Ok(await BuildGeographyDataAsync(db, ct));
+    }
+
+    private static async Task<object> BuildGeographyDataAsync(AppDbContext db, CancellationToken ct)
+    {
+        var totalInquiries = await db.ContactInquiries.CountAsync(ct);
+
+        var geotagged = await db.ContactInquiries
+            .Where(c => c.Country != null && c.Latitude != null && c.Longitude != null)
+            .Select(c => new { c.Country, c.CountryCode, c.City, c.Latitude, c.Longitude })
+            .ToListAsync(ct);
+
+        var totalGeotagged = geotagged.Count;
+
+        var countries = geotagged
+            .GroupBy(c => new { c.Country, c.CountryCode })
+            .Select(g => new { country = g.Key.Country!, countryCode = g.Key.CountryCode, count = g.Count() })
+            .OrderByDescending(c => c.count)
+            .Select(c => new
+            {
+                c.country,
+                c.countryCode,
+                c.count,
+                pct = totalGeotagged > 0 ? Math.Round((double)c.count / totalGeotagged * 100, 1) : 0.0,
+            })
+            .ToList();
+
+        var cities = geotagged
+            .Where(c => c.City != null)
+            .GroupBy(c => new { c.City, c.Country, c.Latitude, c.Longitude })
+            .Select(g => new
+            {
+                city    = g.Key.City!,
+                country = g.Key.Country!,
+                lat     = g.Key.Latitude!.Value,
+                lon     = g.Key.Longitude!.Value,
+                count   = g.Count(),
+            })
+            .OrderByDescending(c => c.count)
+            .Take(50)
+            .ToList();
+
+        return new { countries, cities, totalGeotagged, totalInquiries };
+    }
+
+    // ── Dashboard (landing page) ──────────────────────────────────────────────
+    // Composed from the same data sources/keyword taxonomies as the dedicated tabs above —
+    // no separate tracking pipeline, just a single round-trip aggregation for the landing page.
+
+    private static async Task<IResult> GetDashboardAsync(
+        HttpContext ctx, AppDbContext db, IConfiguration config, CancellationToken ct = default)
+    {
+        if (!Auth(ctx, config)) return Results.Unauthorized();
+
+        var now      = DateTime.UtcNow;
+        var cutoff7  = now.AddDays(-7);
+        var cutoff14 = now.AddDays(-14);
+        var cutoff30 = now.AddDays(-30);
+
+        // ── KPIs ──────────────────────────────────────────────────────────────
+        var totalQueries     = await db.AnalyticsEvents.Where(e => e.EventType == "query").CountAsync(ct);
+        var prevWeekQueries  = await db.AnalyticsEvents.Where(e => e.EventType == "query" && e.CreatedAt >= cutoff14 && e.CreatedAt < cutoff7).CountAsync(ct);
+        var thisWeekQueries  = await db.AnalyticsEvents.Where(e => e.EventType == "query" && e.CreatedAt >= cutoff7).CountAsync(ct);
+
+        var highIntentQueries    = await db.SessionFunnelStatuses.Where(s => s.IsFinalized && s.IsLead && s.LeadTemperature == "hot").CountAsync(ct);
+        var prevHighIntent       = await db.SessionFunnelStatuses.Where(s => s.IsFinalized && s.IsLead && s.LeadTemperature == "hot" && s.FinalizedAt >= cutoff14 && s.FinalizedAt < cutoff7).CountAsync(ct);
+        var thisWeekHighIntent   = await db.SessionFunnelStatuses.Where(s => s.IsFinalized && s.IsLead && s.LeadTemperature == "hot" && s.FinalizedAt >= cutoff7).CountAsync(ct);
+
+        var suggestionsClicked      = await db.AnalyticsEvents.Where(e => e.EventType == "suggestion_click").CountAsync(ct);
+        var prevWeekClicks          = await db.AnalyticsEvents.Where(e => e.EventType == "suggestion_click" && e.CreatedAt >= cutoff14 && e.CreatedAt < cutoff7).CountAsync(ct);
+        var thisWeekClicks          = await db.AnalyticsEvents.Where(e => e.EventType == "suggestion_click" && e.CreatedAt >= cutoff7).CountAsync(ct);
+
+        var all30 = await db.AnalyticsEvents.Where(e => e.EventType == "query" && e.CreatedAt >= cutoff30 && e.Name != null).Select(e => e.Name!).ToListAsync(ct);
+        var gapTopics = new (string topic, string[] keywords)[]
+        {
+            ("Installation Guides",     ["install", "mount", "wire", "connect", "setup"]),
+            ("IP Rating Guidance",      ["ip66", "ip65", "ip67", "waterproof", "rating"]),
+            ("DALI Programming Help",   ["dali", "program", "address", "configure"]),
+            ("Color Temperature Guide", ["2700k", "3000k", "3500k", "4000k", "kelvin", "cct"]),
+            ("Dark Sky Compliance",     ["dark sky", "ies", "uplight", "glare"]),
+            ("Budget Planning",         ["price", "cost", "budget", "expensive", "affordable"]),
+            ("Product Comparison",      ["vs", "compare", "difference", "versus"]),
+        };
+        var contentGapsFound = gapTopics.Count(g => all30.Any(q => g.keywords.Any(k => q.Contains(k, StringComparison.OrdinalIgnoreCase))));
+
+        var kpis = new
+        {
+            totalQueries,
+            totalQueriesTrend     = Trend(thisWeekQueries, prevWeekQueries),
+            highIntentQueries,
+            highIntentTrend       = Trend(thisWeekHighIntent, prevHighIntent),
+            suggestionsClicked,
+            suggestionsClickedTrend = Trend(thisWeekClicks, prevWeekClicks),
+            contentGapsFound,
+        };
+
+        // ── High-frequency queries (top 5) ───────────────────────────────────
+        var highFrequencyQueries = await db.AnalyticsEvents
+            .Where(e => e.EventType == "query" && e.CreatedAt >= cutoff30 && e.Name != null)
+            .GroupBy(e => e.Name!)
+            .Where(g => g.Count() >= 2)
+            .Select(g => new { query = g.Key, count = g.Count() })
+            .OrderByDescending(x => x.count)
+            .Take(5)
+            .ToListAsync(ct);
+        var highFreq = highFrequencyQueries.Select(q => new
+        {
+            q.query,
+            q.count,
+            priority = q.count >= 5 ? "high" : q.count >= 3 ? "medium" : "low",
+        }).ToList();
+
+        // ── AI recommendations (top 3 opportunity cards) ─────────────────────
+        var recent7  = await db.AnalyticsEvents.Where(e => e.EventType == "query" && e.CreatedAt >= cutoff7  && e.Name != null).Select(e => e.Name!).ToListAsync(ct);
+        var prev7    = await db.AnalyticsEvents.Where(e => e.EventType == "query" && e.CreatedAt >= cutoff14 && e.CreatedAt < cutoff7 && e.Name != null).Select(e => e.Name!).ToListAsync(ct);
+        var specTerms = new[]
+        {
+            ("Dark Sky Compliance", "dark sky"), ("DALI Controls", "dali"), ("Hospitality Lighting", "hotel"),
+            ("Campus Lighting", "campus"), ("Coastal Installation", "coastal"), ("IP66 / IP67 Demand", "ip6"),
+        };
+        var aiRecommendations = specTerms
+            .Select(t => new
+            {
+                title    = $"Create {t.Item1} Guide",
+                evidence = all30.Count(q => q.Contains(t.Item2, StringComparison.OrdinalIgnoreCase)),
+                growth   = Trend(recent7.Count(q => q.Contains(t.Item2, StringComparison.OrdinalIgnoreCase)), prev7.Count(q => q.Contains(t.Item2, StringComparison.OrdinalIgnoreCase))),
+            })
+            .Where(x => x.evidence > 0)
+            .OrderByDescending(x => x.growth)
+            .ThenByDescending(x => x.evidence)
+            .Take(3)
+            .Select(x => new
+            {
+                x.title,
+                detectedQueries = x.evidence,
+                potentialImpactPct = (int)Math.Max(x.growth, 5),
+                priority = x.evidence >= 5 ? "High Priority" : "Medium Priority",
+            })
+            .ToList();
+
+        // ── Search trend (last 7 days) ────────────────────────────────────────
+        var qByDay = await db.AnalyticsEvents
+            .Where(e => e.EventType == "query" && e.CreatedAt >= cutoff7)
+            .GroupBy(e => e.CreatedAt.Date)
+            .Select(g => new { Day = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var qMap = qByDay.ToDictionary(x => x.Day, x => x.Count);
+        var searchTrend = Enumerable.Range(0, 7)
+            .Select(i => cutoff7.Date.AddDays(i))
+            .Where(d => d <= now.Date)
+            .Select(d => new { date = d.ToString("MMM d"), queries = qMap.TryGetValue(d, out var c) ? c : 0 })
+            .ToList();
+
+        // ── Top categories ────────────────────────────────────────────────────
+        var categories = new Dictionary<string, string[]>
+        {
+            ["Outdoor Lighting"] = ["exterior", "outdoor", "in-grade", "facade", "pathway", "landscape"],
+            ["Bollard Lights"]   = ["bollard"],
+            ["Architectural"]    = ["facade", "architectural", "highlight", "wall wash", "grazing"],
+            ["Hotel Lighting"]   = ["hotel", "hospitality", "resort"],
+            ["Interior Lighting"]= ["interior", "indoor", "ceiling", "recessed", "downlight"],
+        };
+        var catCounts = categories.Select(kv => new
+        {
+            category = kv.Key,
+            mentions = all30.Count(q => kv.Value.Any(k => q.Contains(k, StringComparison.OrdinalIgnoreCase))),
+        }).Where(x => x.mentions > 0).OrderByDescending(x => x.mentions).ToList();
+        var catTotal = Math.Max(catCounts.Sum(c => c.mentions), 1);
+        var topCategories = catCounts.Select(c => new
+        {
+            c.category,
+            c.mentions,
+            share = Math.Round((double)c.mentions / catTotal * 100, 1),
+        }).ToList();
+
+        // ── Geographic (top 5 countries) ──────────────────────────────────────
+        var geography = await BuildGeographyDataAsync(db, ct);
+
+        // ── Opportunity score ──────────────────────────────────────────────────
+        // Composite of three real signals, each capped to keep one metric from dominating:
+        //   40% query-growth momentum, 30% lead conversion rate, 30% AI-classified hot-lead share.
+        var leadsTotal      = await db.ContactInquiries.Where(l => l.CreatedAt >= cutoff30).CountAsync(ct);
+        var sessionsTotal   = await db.ChatSessions.Where(s => s.CreatedAt >= cutoff30).CountAsync(ct);
+        var convRate        = sessionsTotal > 0 ? (double)leadsTotal / sessionsTotal * 100 : 0.0;
+        var leadTempTotal   = await db.SessionFunnelStatuses.Where(s => s.IsFinalized && s.IsLead).CountAsync(ct);
+        var highIntentPct   = leadTempTotal > 0 ? (double)highIntentQueries / leadTempTotal * 100 : 0.0;
+        var queryGrowthPct  = Trend(thisWeekQueries, prevWeekQueries);
+
+        var opportunityScore = (int)Math.Clamp(
+            0.4 * Math.Min(queryGrowthPct + 50, 100) +
+            0.3 * Math.Min(convRate * 5, 100) +
+            0.3 * Math.Min(highIntentPct, 100),
+            0, 100);
+
+        return Results.Ok(new
+        {
+            kpis,
+            highFrequencyQueries = highFreq,
+            aiRecommendations,
+            searchTrend,
+            topCategories,
+            geographic = geography,
+            contentGaps = gapTopics.Select(g => g.topic)
+                .Where(t => all30.Any(q => gapTopics.First(g2 => g2.topic == t).keywords.Any(k => q.Contains(k, StringComparison.OrdinalIgnoreCase))))
+                .ToList(),
+            opportunityScore,
+        });
     }
 
     // ── Shared helpers ────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ export default function AdminLoginPage() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isAuthenticated()) router.replace('/admin/ai-actions');
+    if (isAuthenticated()) router.replace('/admin/dashboard');
   }, [router]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function AdminLoginPage() {
     setError('');
     try {
       await login(username, password);
-      router.replace('/admin/ai-actions');
+      router.replace('/admin/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.');
     } finally {
