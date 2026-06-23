@@ -42,6 +42,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// <summary>Per-session AI-generated summary, funnel stage classification, and lead temperature.</summary>
     public DbSet<SessionFunnelStatus> SessionFunnelStatuses => Set<SessionFunnelStatus>();
 
+    /// <summary>Countries that BEGA representatives can be located in.</summary>
+    public DbSet<Country> Countries => Set<Country>();
+
+    /// <summary>States/provinces within a country.</summary>
+    public DbSet<State> States => Set<State>();
+
+    /// <summary>BEGA sales representatives / agencies.</summary>
+    public DbSet<Representative> Representatives => Set<Representative>();
+
+    /// <summary>City/Zip detail rows for representatives.</summary>
+    public DbSet<RepresentativeDetail> RepresentativeDetails => Set<RepresentativeDetail>();
+
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
