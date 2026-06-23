@@ -114,3 +114,59 @@ export async function generateBom(params: BomGenerateParams): Promise<BomReport>
 export async function clearChatSession(sessionId: string): Promise<void> {
   await apiFetch(`/api/chat/session/${sessionId}`, { method: 'DELETE' });
 }
+
+// ── Representatives ───────────────────────────────────────────────────────────
+
+export interface RepresentativeCountry {
+  id: number;
+  name: string;
+  shortCode?: string | null;
+}
+
+export interface RepresentativeState {
+  id: number;
+  name: string;
+  countryId: number;
+}
+
+export interface RepresentativeResult {
+  id: number;
+  agencyName: string;
+  address: string;
+  phone?: string | null;
+  fax?: string | null;
+  email?: string | null;
+  website?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+  countryId: number;
+  stateId?: number | null;
+  stateText?: string | null;
+  sortOrder?: number | null;
+}
+
+export interface RepresentativeSearchParams {
+  countryId?: number;
+  stateId?: number;
+  stateText?: string;
+  city?: string;
+  zip?: string;
+  provinces?: string;
+}
+
+export async function getRepresentativeCountries(): Promise<RepresentativeCountry[]> {
+  return apiFetch('/api/representatives/countries');
+}
+
+export async function getRepresentativeStates(countryId?: number): Promise<RepresentativeState[]> {
+  const qs = countryId != null ? `?countryId=${countryId}` : '';
+  return apiFetch(`/api/representatives/states${qs}`);
+}
+
+export async function searchRepresentatives(params: RepresentativeSearchParams): Promise<RepresentativeResult[]> {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  });
+  return apiFetch(`/api/representatives/search?${qs.toString()}`);
+}
