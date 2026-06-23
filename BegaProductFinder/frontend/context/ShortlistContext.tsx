@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useState } from 'react';
 import type { FurnitureSearchResult, ProductDetail, ProductSearchResult } from '@/types';
 import { getProductDetail } from '@/lib/api';
+import { getOrCreateSessionId } from '@/hooks/useChatSession';
+import { trackEvent } from '@/services/insights/analyticsTracker';
 
 export type ShortlistKind = 'product' | 'furniture';
 
@@ -40,11 +42,15 @@ export function ShortlistProvider({ children }: { children: React.ReactNode }) {
     kind: ShortlistKind,
   ) => {
     const cn = item.catalogNumber;
+    let added = false;
 
     setEntries(prev => {
       if (prev.some(e => e.catalogNumber === cn)) return prev;
+      added = true;
       return [...prev, { kind, catalogNumber: cn, snapshot: item, detail: null, detailLoading: true, quantity: 1 }];
     });
+
+    if (added) trackEvent('shortlisted', cn, getOrCreateSessionId());
 
     // Tier 2: fetch full ProductDetail in the background
     try {
@@ -60,7 +66,13 @@ export function ShortlistProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const unpin = useCallback((cn: string) => {
-    setEntries(prev => prev.filter(e => e.catalogNumber !== cn));
+    let removed = false;
+    setEntries(prev => {
+      if (!prev.some(e => e.catalogNumber === cn)) return prev;
+      removed = true;
+      return prev.filter(e => e.catalogNumber !== cn);
+    });
+    if (removed) trackEvent('unshortlisted', cn, getOrCreateSessionId());
   }, []);
 
   const isPinned = useCallback(

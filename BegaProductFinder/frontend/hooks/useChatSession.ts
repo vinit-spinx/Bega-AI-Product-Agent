@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageAttachment, SseEvent, UiMessage } from '@/types';
+import { trackEvent } from '@/services/insights/analyticsTracker';
 
 const SESSION_KEY = 'bega_session_id';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 // Single-area vision queries return top_k=6; multi-area return 3+3=6; text queries return 3.
 // Cap at 6 — total products shown per assistant message is always ≤ 6.
 const MAX_PRODUCTS_PER_MESSAGE = 6;
 
-function getOrCreateSessionId(): string {
+export function getOrCreateSessionId(): string {
   if (typeof window === 'undefined') return crypto.randomUUID();
   let id = sessionStorage.getItem(SESSION_KEY);
   if (!id) {
@@ -107,6 +109,9 @@ export function useChatSession(): UseChatSessionReturn {
             ...msg,
             bomReport: event.report,
           }));
+          // Fires once per generation (this branch only runs when the SSE 'bom' event
+          // arrives), not on every re-render.
+          trackEvent('bom_generated', String(event.report.itemCount), sessionIdRef.current);
           break;
 
         case 'suggested_actions':
@@ -244,13 +249,24 @@ export function useChatSession(): UseChatSessionReturn {
   );
 
   const clearSession = useCallback(() => {
+    const endedSessionId = sessionIdRef.current;
+    // Fire-and-forget: trigger AI summary + funnel/lead classification for the session that
+    // just ended. keepalive survives the page staying open through the New Chat transition;
+    // the background sweep on the server catches it too if this never lands.
+    if (endedSessionId && messages.some(m => m.role === 'user')) {
+      fetch(`${API_URL}/api/chat/session/${endedSessionId}/finalize`, {
+        method: 'POST',
+        keepalive: true,
+      }).catch(() => { /* intentionally ignored */ });
+    }
+
     const newId = crypto.randomUUID();
     sessionStorage.setItem(SESSION_KEY, newId);
     sessionIdRef.current = newId;
     lastImageRef.current = undefined;
     setMessages([]);
     setIsLoading(false);
-  }, []);
+  }, [messages]);
 
   return {
     messages,

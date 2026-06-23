@@ -5,6 +5,7 @@ import type { BomReport, ColorTemperatureOption, FurnitureSearchResult, ProductD
 import { type ShortlistEntry, useShortlist } from '@/context/ShortlistContext';
 import BomTable from './BomTable';
 import CompareTour from '../tour/CompareTour';
+import RequestQuoteDrawer from '../chat/RequestQuoteDrawer';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,15 +72,32 @@ function SpecRow({ label, values }: { label: string; values: React.ReactNode[] }
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export default function CompareDrawer() {
+interface CompareDrawerProps {
+  sessionId: string;
+  /** Starts a brand new chat session — reused as-is for the quote drawer's "I'm done" action. */
+  onDone: () => void;
+}
+
+export default function CompareDrawer({ sessionId, onDone }: CompareDrawerProps) {
   const { entries, isOpen, closeDrawer, clearAll, unpin, setQuantity } = useShortlist();
   const [bomReport, setBomReport] = useState<BomReport | null>(null);
   const [bomLoading, setBomLoading] = useState(false);
   const [bomError, setBomError]   = useState('');
+  const [quoteDrawerOpen, setQuoteDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
-  // Reset BOM when entries change
-  useEffect(() => { setBomReport(null); setBomError(''); }, [entries]);
+  // Reset BOM (and the quote drawer it gates) when entries change
+  useEffect(() => { setBomReport(null); setBomError(''); setQuoteDrawerOpen(false); }, [entries]);
+
+  const handleQuoteContinue = () => {
+    setQuoteDrawerOpen(false);
+    closeDrawer();
+  };
+
+  const handleQuoteDone = () => {
+    setQuoteDrawerOpen(false);
+    onDone(); // clearSession() + clearAll() — clearAll() also closes this drawer (isOpen=false)
+  };
 
   // Close on Escape
   useEffect(() => {
@@ -452,6 +470,19 @@ export default function CompareDrawer() {
                   Bill of Materials — Shortlisted Products
                 </p>
                 <BomTable report={bomReport} />
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={() => setQuoteDrawerOpen(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-md text-sm font-semibold
+                               bg-bega-black hover:bg-bega-text-2 text-white
+                               transition-all duration-150 shadow-button"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z" />
+                    </svg>
+                    Request a Quote
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -459,6 +490,17 @@ export default function CompareDrawer() {
 
         <CompareTour />
       </div>
+
+      {bomReport && (
+        <RequestQuoteDrawer
+          open={quoteDrawerOpen}
+          onClose={() => setQuoteDrawerOpen(false)}
+          onContinue={handleQuoteContinue}
+          onDone={handleQuoteDone}
+          sessionId={sessionId}
+          bomReport={bomReport}
+        />
+      )}
     </>
   );
 }

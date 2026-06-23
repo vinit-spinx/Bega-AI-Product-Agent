@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using BegaProductFinder.Core.Interfaces;
 using BegaProductFinder.Core.Models;
+using BegaProductFinder.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BegaProductFinder.API.Endpoints;
@@ -33,6 +34,10 @@ public static class ChatEndpoints
         group.MapDelete("/session/{sessionId}", DeleteSessionAsync)
             .WithName("DeleteChatSession")
             .WithSummary("Clear all messages for a session.");
+
+        group.MapPost("/session/{sessionId}/finalize", FinalizeSessionAsync)
+            .WithName("FinalizeChatSession")
+            .WithSummary("Trigger AI summary + funnel/lead classification for a session that has ended.");
     }
 
     // ── POST /api/chat/message ────────────────────────────────────────────────
@@ -40,9 +45,31 @@ public static class ChatEndpoints
     private static async Task HandleMessageAsync(
         [FromBody] ChatMessageRequest request,
         IAgentOrchestrator orchestrator,
+        IServiceScopeFactory scopeFactory,
         HttpContext httpContext,
         CancellationToken ct)
     {
+        // Fire-and-forget: record the query for analytics without blocking the stream
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                db.AnalyticsEvents.Add(new AnalyticsEvent
+                {
+                    EventType = "query",
+                    SessionId = request.SessionId,
+                    Name      = request.Message.Length > 500
+                        ? request.Message[..500]
+                        : request.Message,
+                    CreatedAt = DateTime.UtcNow,
+                });
+                await db.SaveChangesAsync();
+            }
+            catch { /* swallow — analytics must never break the chat stream */ }
+        });
+
         var response = httpContext.Response;
         response.ContentType = "text/event-stream";
         response.Headers.CacheControl = "no-cache";
@@ -132,6 +159,32 @@ public static class ChatEndpoints
         await sessionService.SaveAsync(session, ct);
 
         return Results.Ok(new { sessionId, cleared = true });
+    }
+
+    // ── POST /api/chat/session/{sessionId}/finalize ───────────────────────────
+
+    private static IResult FinalizeSessionAsync(
+        string sessionId,
+        IServiceScopeFactory scopeFactory,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(sessionId, out _))
+            return Results.BadRequest("sessionId must be a valid UUID.");
+
+        // Fire-and-forget — the AI call this triggers must never block the "New Chat" click,
+        // and the background sweep will catch this session anyway if this fails silently.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var finalizer = scope.ServiceProvider.GetRequiredService<ISessionFinalizationService>();
+                await finalizer.FinalizeSessionAsync(sessionId, CancellationToken.None);
+            }
+            catch { /* swallow — the background sweep is the safety net */ }
+        }, ct);
+
+        return Results.Accepted();
     }
 }
 

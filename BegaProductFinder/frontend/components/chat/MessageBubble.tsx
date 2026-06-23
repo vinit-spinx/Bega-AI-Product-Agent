@@ -126,7 +126,7 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
                 <SectionLabel>Luminaires ({message.products.length})</SectionLabel>
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {message.products.map((p, i) => (
-                    <ProductCard key={`${p.productId}-${p.catalogNumber}-${i}`} product={p} />
+                    <ProductCard key={`${p.productId}-${p.catalogNumber}-${i}`} product={p} sessionId={sessionId} />
                   ))}
                 </div>
               </section>
@@ -137,7 +137,7 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
                 <SectionLabel>Furniture &amp; Urban Elements ({message.furnitureItems.length})</SectionLabel>
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {message.furnitureItems.map((item, i) => (
-                    <FurnitureCard key={`${item.productId}-${item.catalogNumber}-${i}`} item={item} />
+                    <FurnitureCard key={`${item.productId}-${item.catalogNumber}-${i}`} item={item} sessionId={sessionId} />
                   ))}
                 </div>
               </section>

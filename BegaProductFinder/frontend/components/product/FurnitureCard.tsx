@@ -1,18 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FurnitureSearchResult, ProductProject } from '@/types';
 import { useShortlist } from '@/context/ShortlistContext';
+import { trackEvent } from '@/services/insights/analyticsTracker';
 import DimensionTable from './DimensionTable';
 
 interface FurnitureCardProps {
   item: FurnitureSearchResult;
+  sessionId?: string;
 }
 
-export default function FurnitureCard({ item }: FurnitureCardProps) {
+export default function FurnitureCard({ item, sessionId }: FurnitureCardProps) {
   const [imgError, setImgError] = useState(false);
   const { pin, unpin, isPinned } = useShortlist();
   const pinned = isPinned(item.catalogNumber);
+
+  // Fires once per mount (i.e. once per unique catalog number shown) — a passive
+  // "this product was shown to the user" signal for the conversion funnel.
+  useEffect(() => {
+    trackEvent('product_viewed', item.catalogNumber, sessionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePin = () => {
     if (pinned) unpin(item.catalogNumber);

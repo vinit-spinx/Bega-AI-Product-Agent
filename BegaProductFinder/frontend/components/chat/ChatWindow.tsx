@@ -93,12 +93,12 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
           </span>
         </button>
 
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <span className={`inline-flex w-1.5 h-1.5 rounded-full flex-shrink-0 ${isLoading ? 'bg-bega-text-3 animate-pulse' : 'bg-emerald-500'}`} />
           <span className="text-[11px] text-bega-text-3 tracking-wide hidden sm:block">
             {isLoading ? 'Processing…' : 'Ready'}
           </span>
-        </div>
+        </div> */}
       </header>
 
       {isEmpty ? (
@@ -146,8 +146,13 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
             </h2>
             {hero.description && (
               <p
-                className="text-[11px] text-bega-text-3 tracking-[0.22em] uppercase mt-4 text-center max-w-xl animate-fade-in"
-                style={{ animationDelay: '230ms' }}
+                className="text-[11px] text-bega-text-2 tracking-[0.22em] uppercase mt-4 text-center max-w-xl animate-fade-in"
+                style={{
+                  animationDelay: '230ms',
+                  textShadow: hero.backgroundImageUrl
+                    ? '0 1px 12px rgba(247,245,242,0.9), 0 1px 2px rgba(247,245,242,0.9)'
+                    : undefined,
+                }}
               >
                 {hero.description}
               </p>
@@ -192,7 +197,7 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
         hasProducts={hasProducts}
         onActiveChange={(active) => { tourActiveRef.current = active; }}
       />
-      <CompareDrawer />
+      <CompareDrawer sessionId={sessionId} onDone={handleNewChat} />
     </div>
   );
 }
