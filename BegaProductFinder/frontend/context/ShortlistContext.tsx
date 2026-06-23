@@ -21,13 +21,10 @@ export interface ShortlistEntry {
 
 interface ShortlistContextValue {
   entries: ShortlistEntry[];
-  isOpen: boolean;
   pin: (item: ProductSearchResult | FurnitureSearchResult, kind: ShortlistKind) => void;
   unpin: (catalogNumber: string) => void;
   isPinned: (catalogNumber: string) => boolean;
   setQuantity: (catalogNumber: string, qty: number) => void;
-  openDrawer: () => void;
-  closeDrawer: () => void;
   clearAll: () => void;
 }
 
@@ -35,7 +32,6 @@ const ShortlistContext = createContext<ShortlistContextValue | null>(null);
 
 export function ShortlistProvider({ children }: { children: React.ReactNode }) {
   const [entries, setEntries] = useState<ShortlistEntry[]>([]);
-  const [isOpen, setIsOpen]   = useState(false);
 
   const pin = useCallback(async (
     item: ProductSearchResult | FurnitureSearchResult,
@@ -88,11 +84,9 @@ export function ShortlistProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ShortlistContext.Provider value={{
-      entries, isOpen,
+      entries,
       pin, unpin, isPinned, setQuantity,
-      openDrawer:  () => setIsOpen(true),
-      closeDrawer: () => setIsOpen(false),
-      clearAll:    () => { setEntries([]); setIsOpen(false); },
+      clearAll: () => setEntries([]),
     }}>
       {children}
     </ShortlistContext.Provider>

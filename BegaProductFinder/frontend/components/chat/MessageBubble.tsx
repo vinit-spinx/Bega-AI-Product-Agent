@@ -1,18 +1,28 @@
 'use client';
 
 import type { UiMessage } from '@/types';
+import { useShortlist } from '@/context/ShortlistContext';
+import { COMPARE_ACTION } from '@/lib/flowActions';
 import BomTable from '../product/BomTable';
+import ComparisonCard from '../product/ComparisonCard';
 import FurnitureCard from '../product/FurnitureCard';
 import ProductCard from '../product/ProductCard';
 import ProjectAreaCard from '../product/ProjectAreaCard';
 import SuggestedActions from '../product/SuggestedActions';
-import NextStepsPanel from './NextStepsPanel';
+import ConnectFormCard from './ConnectFormCard';
+import FindRepCard from './FindRepCard';
+import QuoteFormCard from './QuoteFormCard';
 import StreamingText from './StreamingText';
 import VisionPlacementMap from './VisionPlacementMap';
 
 interface MessageBubbleProps {
   message: UiMessage;
   sessionId: string;
+  /** True for the last message in the list — only it gets the dynamic "Compare shortlisted" nudge. */
+  isLast: boolean;
+  /** True once a BOM has been generated this session — suppresses the "Compare shortlisted" nudge,
+   *  since the flow has already moved past comparing into quote/connect territory. */
+  hasBom: boolean;
   onSuggestedAction: (action: string) => void;
 }
 
@@ -39,8 +49,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function MessageBubble({ message, sessionId, onSuggestedAction }: MessageBubbleProps) {
+export default function MessageBubble({ message, sessionId, isLast, hasBom, onSuggestedAction }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const { entries: shortlistEntries } = useShortlist();
 
   if (isUser) {
     return (
@@ -65,7 +76,18 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
     (message.products?.length ?? 0) > 0 ||
     (message.furnitureItems?.length ?? 0) > 0 ||
     (message.projectAreas?.length ?? 0) > 0 ||
-    message.bomReport != null;
+    message.bomReport != null ||
+    message.flowCard != null;
+
+  // The "Compare shortlisted products" nudge is computed client-side from live shortlist
+  // state rather than coming from Claude — it's only attached to the latest message, only
+  // once there's something to compare, this message isn't itself a flow step, and the flow
+  // hasn't already progressed past comparing (i.e. a BOM hasn't been generated yet).
+  const showCompareNudge = isLast && !message.flowCard && !hasBom && shortlistEntries.length >= 1;
+  const displayActions = [
+    ...(message.suggestedActions ?? []),
+    ...(showCompareNudge && !(message.suggestedActions ?? []).includes(COMPARE_ACTION) ? [COMPARE_ACTION] : []),
+  ];
 
   return (
     <div className="flex justify-start px-4 py-2 animate-slide-in-left">
@@ -157,6 +179,13 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
             {message.bomReport && (
               <BomTable report={message.bomReport} />
             )}
+
+            {message.flowCard?.kind === 'comparison' && <ComparisonCard />}
+            {message.flowCard?.kind === 'quote' && (
+              <QuoteFormCard sessionId={sessionId} bomReport={message.flowCard.bomReport} />
+            )}
+            {message.flowCard?.kind === 'connect' && <ConnectFormCard sessionId={sessionId} />}
+            {message.flowCard?.kind === 'find_rep' && <FindRepCard />}
           </div>
         )}
 
@@ -188,19 +217,14 @@ export default function MessageBubble({ message, sessionId, onSuggestedAction }:
                 </div>
               )}
 
-              {!message.isStreaming && message.suggestedActions && message.suggestedActions.length > 0 && (
+              {!message.isStreaming && displayActions.length > 0 && (
                 <div className="border-t border-bega-border-1 mt-3 pt-3">
-                  <SuggestedActions actions={message.suggestedActions} onSelect={() => {}} />
+                  <SuggestedActions actions={displayActions} onSelect={onSuggestedAction} />
                 </div>
               )}
             </div>
           </div>
         </div>
-
-        {/* ── Next steps panel — shown after rich data or on error ── */}
-        {!message.isStreaming && (hasRichData || !!message.error) && (
-          <NextStepsPanel sessionId={sessionId} />
-        )}
 
       </div>
     </div>

@@ -198,6 +198,17 @@ export interface ImageAttachment {
   previewUrl: string;
 }
 
+// ── In-conversation flow cards ─────────────────────────────────────────────────
+// Deterministic, client-driven steps that follow shortlisting: compare → BOM →
+// quote/connect. Rendered inline inside the assistant bubble that carries them
+// rather than as a separate modal/drawer.
+
+export type FlowCard =
+  | { kind: 'comparison' }
+  | { kind: 'quote'; bomReport?: BomReport }
+  | { kind: 'connect' }
+  | { kind: 'find_rep' };
+
 export interface UiMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -213,6 +224,8 @@ export interface UiMessage {
   projectAreas?: ProjectAreaRecommendation[];
   bomReport?: BomReport;
   suggestedActions?: string[];
+  /** Set on synthetic, locally-pushed messages that drive the compare/BOM/quote flow. */
+  flowCard?: FlowCard;
   isStreaming: boolean;
   error?: string;
 }

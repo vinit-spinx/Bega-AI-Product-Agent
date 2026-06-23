@@ -2,13 +2,18 @@
 
 import { useShortlist } from '@/context/ShortlistContext';
 
-export default function ShortlistButton() {
-  const { entries, openDrawer } = useShortlist();
+interface ShortlistButtonProps {
+  /** Pushes "Compare shortlisted products" into the conversation as the next step. */
+  onClick: () => void;
+}
+
+export default function ShortlistButton({ onClick }: ShortlistButtonProps) {
+  const { entries } = useShortlist();
   const isEmpty = entries.length === 0;
 
   return (
     <button
-      onClick={isEmpty ? undefined : openDrawer}
+      onClick={isEmpty ? undefined : onClick}
       data-tour="shortlist-button"
       aria-label={isEmpty ? 'Shortlist is empty' : `Open shortlist — ${entries.length} product${entries.length !== 1 ? 's' : ''}`}
       className={`fixed bottom-32 right-5 z-40 flex items-center gap-2 px-4 py-2.5

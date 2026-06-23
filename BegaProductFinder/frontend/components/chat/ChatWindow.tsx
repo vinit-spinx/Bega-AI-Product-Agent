@@ -1,15 +1,38 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useHeroContent } from '@/hooks/useAdminStore';
-import { ShortlistProvider, useShortlist } from '@/context/ShortlistContext';
-import CompareDrawer from '../product/CompareDrawer';
+import { ShortlistProvider, useShortlist, type ShortlistEntry } from '@/context/ShortlistContext';
+import { generateBom } from '@/lib/api';
+import {
+  COMPARE_ACTION, GENERATE_BOM_ACTION, REQUEST_QUOTE_ACTION, CONNECT_ACTION, FIND_REP_ACTION,
+} from '@/lib/flowActions';
+import type { BomReport, ImageAttachment } from '@/types';
 import ChatInput from './ChatInput';
 import MessageBubble from './MessageBubble';
 import ShortlistButton from './ShortlistButton';
 import ProductTour from '../tour/ProductTour';
 import SuggestionCards from './SuggestionCards';
+
+// Ephemeral per-turn context — prepended to the text actually sent to Claude (never shown
+// in the chat bubble, via sendMessage's displayText param) so the agent can route flow intent
+// expressed in free text (e.g. "can you compare these for me") back onto the same suggested
+// action pills, instead of guessing or trying to fulfil it itself. No backend/schema changes
+// needed since this rides the existing message text.
+function buildShortlistContextPrefix(entries: ShortlistEntry[], lastBomReport?: BomReport): string {
+  // Always send this line — even at 0 items — so the backend's SHORTLIST & FLOW CONTEXT rule
+  // is reliably triggered instead of silently falling through to the generic generate_bill_of_materials
+  // tool dispatch when nothing has been pinned yet.
+  if (entries.length === 0) {
+    return '[Shortlist context — not visible to user: 0 items shortlisted. No bill of materials has been generated yet.]\n\n';
+  }
+  const items = entries.map(e => `${e.catalogNumber} x${e.quantity}`).join(', ');
+  const bomNote = lastBomReport
+    ? ` A bill of materials has already been generated (subtotal $${lastBomReport.subtotalDnp.toFixed(2)} DNP).`
+    : ' No bill of materials has been generated yet.';
+  return `[Shortlist context — not visible to user: ${entries.length} item(s) shortlisted (${items}).${bomNote}]\n\n`;
+}
 
 // The BEGA B-letterform path reused in multiple places
 const BEGA_B_PATH =
@@ -38,8 +61,9 @@ export default function ChatWindow({ showSuggestions = false, onReady }: ChatWin
 }
 
 function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
-  const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
-  const { clearAll: clearShortlist } = useShortlist();
+  const { messages, sessionId, isLoading, sendMessage, clearSession, pushFlowStep, updateMessage } = useChatSession();
+  const { entries: shortlistEntries, clearAll: clearShortlist } = useShortlist();
+  const [lastBomReport, setLastBomReport] = useState<BomReport | undefined>(undefined);
   const hero = useHeroContent();
   const bottomRef = useRef<HTMLDivElement>(null);
   // While the product tour is active it controls its own scroll target — we must
@@ -58,10 +82,105 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Keep lastBomReport in sync with whatever the latest BOM actually is — regardless of
+  // whether it arrived via the local "Generate Bill of Materials" flow or because the agent
+  // called the tool itself. Without this, a model-triggered BOM would leave lastBomReport
+  // (and therefore the "Compare shortlisted" nudge gate and the quote form binding) stale.
+  useEffect(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].bomReport) {
+        setLastBomReport(messages[i].bomReport);
+        return;
+      }
+    }
+  }, [messages]);
+
   const handleNewChat = useCallback(() => {
     clearSession();
     clearShortlist();
+    setLastBomReport(undefined);
   }, [clearSession, clearShortlist]);
+
+  const handleCompareRequested = useCallback(() => {
+    pushFlowStep(COMPARE_ACTION, {
+      content: "Here's how your shortlisted products compare. Would you like a priced Bill of Materials for these, "
+        + 'or would you rather keep browsing for other options?',
+      flowCard: { kind: 'comparison' },
+      suggestedActions: [
+        GENERATE_BOM_ACTION,
+        'Show me other product options',
+        'Remove an item from this comparison',
+        'Adjust quantities before generating a BOM',
+        'Find a similar product with different specs',
+      ],
+    });
+  }, [pushFlowStep]);
+
+  const handleGenerateBom = useCallback(async () => {
+    if (shortlistEntries.length === 0) return;
+    const assistantId = pushFlowStep(GENERATE_BOM_ACTION, { isStreaming: true });
+    try {
+      const report = await generateBom({
+        items: shortlistEntries.map(e => ({ catalogNumber: e.catalogNumber, quantity: e.quantity })),
+      });
+      setLastBomReport(report);
+      updateMessage(assistantId, {
+        isStreaming: false,
+        content: "Here's your bill of materials. Would you like to request a formal quote, connect with the BEGA "
+          + 'team, or find a representative near you?',
+        bomReport: report,
+        suggestedActions: [
+          REQUEST_QUOTE_ACTION,
+          CONNECT_ACTION,
+          FIND_REP_ACTION,
+          'Export this BOM as a CSV',
+          'Adjust quantities and regenerate',
+          'Continue browsing for more products',
+        ],
+      });
+    } catch (err) {
+      updateMessage(assistantId, {
+        isStreaming: false,
+        error: err instanceof Error ? err.message : 'Failed to generate BOM',
+      });
+    }
+  }, [shortlistEntries, pushFlowStep, updateMessage]);
+
+  // Used for anything that reaches Claude — typed input, suggestion-card clicks, and
+  // freeform suggested-action pills. Invisibly prepends shortlist/BOM state so the agent
+  // can route flow intent expressed in free text back onto the same suggested action pills.
+  const handleTypedSend = useCallback((text: string, image?: ImageAttachment) => {
+    const prefix = buildShortlistContextPrefix(shortlistEntries, lastBomReport);
+    void sendMessage(prefix + text, image, text);
+  }, [shortlistEntries, lastBomReport, sendMessage]);
+
+  const handleSuggestedAction = useCallback((action: string) => {
+    switch (action) {
+      case COMPARE_ACTION:
+        handleCompareRequested();
+        return;
+      case GENERATE_BOM_ACTION:
+        void handleGenerateBom();
+        return;
+      case REQUEST_QUOTE_ACTION:
+        pushFlowStep(REQUEST_QUOTE_ACTION, {
+          content: "Sure — here's a quick form to get a formal quote.",
+          flowCard: { kind: 'quote', bomReport: lastBomReport },
+        });
+        return;
+      case CONNECT_ACTION:
+        pushFlowStep(CONNECT_ACTION, {
+          content: 'Tell us a bit about your inquiry and a BEGA representative will follow up.',
+          flowCard: { kind: 'connect' },
+        });
+        return;
+      case FIND_REP_ACTION:
+        pushFlowStep(FIND_REP_ACTION, { content: '', flowCard: { kind: 'find_rep' } });
+        return;
+      default:
+        handleTypedSend(action);
+    }
+  }, [handleCompareRequested, handleGenerateBom, pushFlowStep, lastBomReport, handleTypedSend]);
 
   const isEmpty = messages.length === 0;
   const hasProducts = messages.some(m => (m.products?.length ?? 0) > 0);
@@ -162,11 +281,11 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
           {/* ── Input + suggestion grid ── */}
           <div className="w-full max-w-2xl relative z-10 mt-2">
             <div className="animate-fade-in" style={{ animationDelay: '300ms' }}>
-              <ChatInput onSend={sendMessage} isLoading={isLoading} onClear={handleNewChat} variant="hero" />
+              <ChatInput onSend={handleTypedSend} isLoading={isLoading} onClear={handleNewChat} variant="hero" />
             </div>
 
             {showSuggestions && (
-              <SuggestionCards onSend={sendMessage} />
+              <SuggestionCards onSend={handleTypedSend} />
             )}
           </div>
         </div>
@@ -175,29 +294,30 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
         /* ── Active chat ──────────────────────────────────────────────────── */
         <>
           <div className="flex-1 overflow-y-auto py-6 space-y-2 bg-bega-bg-1">
-            {messages.map(msg => (
+            {messages.map((msg, idx) => (
               <MessageBubble
                 key={msg.id}
                 message={msg}
                 sessionId={sessionId}
-                onSuggestedAction={sendMessage}
+                isLast={idx === messages.length - 1}
+                hasBom={lastBomReport != null}
+                onSuggestedAction={handleSuggestedAction}
               />
             ))}
             <div ref={bottomRef} />
           </div>
 
           <div className="flex-shrink-0">
-            <ChatInput onSend={sendMessage} isLoading={isLoading} onClear={handleNewChat} />
+            <ChatInput onSend={handleTypedSend} isLoading={isLoading} onClear={handleNewChat} />
           </div>
         </>
       )}
 
-      {!isEmpty && <ShortlistButton />}
+      {/* {!isEmpty && <ShortlistButton onClick={handleCompareRequested} />} */}
       <ProductTour
         hasProducts={hasProducts}
         onActiveChange={(active) => { tourActiveRef.current = active; }}
       />
-      <CompareDrawer sessionId={sessionId} onDone={handleNewChat} />
     </div>
   );
 }

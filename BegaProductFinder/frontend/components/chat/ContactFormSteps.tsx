@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-// Shared sub-components for multi-step contact forms in chat — used by both
-// NextStepsPanel.tsx ("Connect with BEGA Team") and RequestQuoteDrawer.tsx ("Request a Quote").
+// Shared field primitives for inline in-conversation contact forms — used by both
+// ConnectFormCard.tsx ("Connect with BEGA Team") and QuoteFormCard.tsx ("Request a Quote").
 
 export function StepDots({ current, total }: { current: number; total: number }) {
   return (

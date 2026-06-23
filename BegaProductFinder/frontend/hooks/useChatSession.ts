@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageAttachment, SseEvent, UiMessage } from '@/types';
 import { trackEvent } from '@/services/insights/analyticsTracker';
+import { REQUEST_QUOTE_ACTION, CONNECT_ACTION, FIND_REP_ACTION } from '@/lib/flowActions';
 
 const SESSION_KEY = 'bega_session_id';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -37,6 +38,14 @@ export interface UseChatSessionReturn {
   /** `displayText` overrides the label shown in the chat bubble without affecting the API payload. */
   sendMessage: (message: string, image?: ImageAttachment, displayText?: string) => Promise<void>;
   clearSession: () => void;
+  /**
+   * Appends a user bubble + assistant bubble locally — no backend round-trip.
+   * Used for the deterministic compare/BOM/quote flow that follows shortlisting.
+   * Returns the new assistant message's id so callers can patch it later (e.g. once a BOM resolves).
+   */
+  pushFlowStep: (userLabel: string, assistant: Partial<UiMessage>) => string;
+  /** Patches a previously-pushed message in place (e.g. to fill in a BOM result or an error). */
+  updateMessage: (id: string, patch: Partial<UiMessage>) => void;
 }
 
 export function useChatSession(): UseChatSessionReturn {
@@ -147,6 +156,17 @@ export function useChatSession(): UseChatSessionReturn {
             // Strip <placement_map> tag — placement_map SSE event handles the structured data
             content = content.replace(/<placement_map>[\s\S]*?<\/placement_map>/, '').trimEnd();
 
+            // If the agent called generate_bill_of_materials itself (instead of handing off to the
+            // shortlist flow's "Generate Bill of Materials" button), force the same canonical
+            // follow-up framing the local flow uses — model instruction-following on the hand-off
+            // rule isn't 100% reliable, so the client makes the post-BOM UX consistent regardless
+            // of which path produced it.
+            if (msg.bomReport != null) {
+              content = "Here's your bill of materials. Would you like to request a formal quote, connect with "
+                + 'the BEGA team, or find a representative near you?';
+              suggestedActions = [REQUEST_QUOTE_ACTION, CONNECT_ACTION, FIND_REP_ACTION];
+            }
+
             return { ...msg, isStreaming: false, content, suggestedActions };
           });
           setIsLoading(false);
@@ -248,6 +268,29 @@ export function useChatSession(): UseChatSessionReturn {
     [isLoading, handleSseEvent, updateLastAssistantMessage], // image is a param, not state
   );
 
+  const pushFlowStep = useCallback((userLabel: string, assistant: Partial<UiMessage>): string => {
+    const userMsg: UiMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: userLabel,
+      isStreaming: false,
+    };
+    const assistantId = crypto.randomUUID();
+    const assistantMsg: UiMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      isStreaming: false,
+      ...assistant,
+    };
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    return assistantId;
+  }, []);
+
+  const updateMessage = useCallback((id: string, patch: Partial<UiMessage>) => {
+    setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)));
+  }, []);
+
   const clearSession = useCallback(() => {
     const endedSessionId = sessionIdRef.current;
     // Fire-and-forget: trigger AI summary + funnel/lead classification for the session that
@@ -274,5 +317,7 @@ export function useChatSession(): UseChatSessionReturn {
     isLoading,
     sendMessage,
     clearSession,
+    pushFlowStep,
+    updateMessage,
   };
 }

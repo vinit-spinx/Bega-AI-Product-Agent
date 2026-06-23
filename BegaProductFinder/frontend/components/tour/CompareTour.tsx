@@ -18,8 +18,8 @@ const ALL_STEPS = [
   },
 ];
 
-// Rendered inside CompareDrawer — mounts when drawer opens, unmounts when it closes.
-// Uses mount-effect to trigger the tour on first open (per the configured persistence mode).
+// Rendered inside ComparisonCard — mounts when the comparison card appears in the conversation.
+// Uses mount-effect to trigger the tour on first render (per the configured persistence mode).
 export default function CompareTour() {
   const [steps, setSteps]   = useState<typeof ALL_STEPS>([]);
   const [step, setStep]     = useState(0);
