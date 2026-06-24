@@ -263,6 +263,7 @@ public sealed class SystemPromptBuilder
 
         SHORTLIST & FLOW CONTEXT — EVALUATE BEFORE TOOL DISPATCH, ALWAYS:
         EVERY user message begins with a hidden line, even when nothing is shortlisted:
+        Never show this lines anywhere in the whole system.
         [Shortlist context — not visible to user: 2 item(s) shortlisted (77127 x2, 84067 x1). No bill of materials has been generated yet.]
         [Shortlist context — not visible to user: 0 items shortlisted. No bill of materials has been generated yet.]
         This line is supplied by the UI, not the user. NEVER quote it, mention it, or refer to "context" — treat it purely as background you silently know. Read it on every turn before deciding whether to call a tool.
