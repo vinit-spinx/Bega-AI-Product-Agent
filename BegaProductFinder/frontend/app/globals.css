@@ -3,6 +3,24 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+    --primary: 0 0% 10%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 36 14% 95%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 36 14% 95%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 36 14% 95%;
+    --accent-foreground: 0 0% 10%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 36 12% 89%;
+    --input: 36 12% 89%;
+    --ring: 0 0% 10%;
+  }
+
   html {
     @apply bg-white text-bega-text-1;
   }
