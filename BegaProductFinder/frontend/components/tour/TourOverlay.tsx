@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const PAD = 10;          // padding around the spotlight rect
 const TIP_W = 292;       // tooltip width
@@ -127,9 +128,7 @@ export default function TourOverlay({
     // Scroll the element to a predictable vertical position in its container.
     scrollToTarget(el);
 
-    const measure = () => {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return; // not yet visible
+    const commit = (r: DOMRect) => {
       const padded: SpotRect = {
         top:    r.top    - PAD,
         left:   r.left   - PAD,
@@ -140,17 +139,61 @@ export default function TourOverlay({
       setTipPos(calcTipPos(padded, window.innerWidth, window.innerHeight));
     };
 
-    // 100 ms is enough for the browser to reflow after the synchronous scroll.
-    const t = setTimeout(measure, 100);
-    window.addEventListener('resize', measure);
-    return () => { clearTimeout(t); window.removeEventListener('resize', measure); };
+    // A fixed delay isn't reliable here — anything still settling after the scroll (a product
+    // image finishing layout, a slide-in animation, a re-render from elsewhere in the chat) can
+    // shift the row's position after a single measurement, leaving the spotlight locked onto
+    // wherever the target *used* to be. Instead, poll every frame and only commit once the rect
+    // has held perfectly still for a few consecutive frames (or after a generous timeout, so a
+    // step is never stuck waiting forever).
+    let rafId = 0;
+    let lastRect: DOMRect | null = null;
+    let stableFrames = 0;
+    const deadline = performance.now() + 1500;
+
+    const tick = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) {
+        if (performance.now() < deadline) rafId = requestAnimationFrame(tick);
+        return; // not yet visible
+      }
+
+      const stable = lastRect !== null
+        && Math.abs(r.top    - lastRect.top)    < 0.5
+        && Math.abs(r.left   - lastRect.left)   < 0.5
+        && Math.abs(r.width  - lastRect.width)  < 0.5
+        && Math.abs(r.height - lastRect.height) < 0.5;
+      lastRect = r;
+      stableFrames = stable ? stableFrames + 1 : 0;
+
+      if (stableFrames >= 3 || performance.now() >= deadline) {
+        commit(r);
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+
+    const onResize = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return;
+      commit(r);
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => { cancelAnimationFrame(rafId); window.removeEventListener('resize', onResize); };
   }, [targetSelector]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!spot || !tipPos) return null;
 
   const isLast = step === totalSteps;
 
-  return (
+  // Portaled to document.body — message bubbles animate with a CSS transform
+  // (animate-slide-in-left/right, held via fill-mode "both"), and any transformed
+  // ancestor becomes the containing block for position:fixed descendants. Rendered
+  // inline, this overlay's "fixed" coordinates would resolve relative to that
+  // message bubble instead of the viewport, throwing off the spotlight position.
+  return createPortal(
     <>
       {/* Click-away backdrop — clicking outside spotlight skips tour */}
       <div
@@ -240,6 +283,7 @@ export default function TourOverlay({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

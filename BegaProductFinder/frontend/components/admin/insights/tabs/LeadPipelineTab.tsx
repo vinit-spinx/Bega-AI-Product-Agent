@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  fetchLeadTable, fetchSessionConversation,
+  fetchLeadTable, fetchSessionConversation, stripShortlistContext,
   type LeadTableRow, type ChatMessage, type LeadTemperature,
 } from '@/services/insights/insightsV2Service';
 import AnimatedBanner from '../widgets/AnimatedBanner';
@@ -234,7 +234,7 @@ function ConversationOffcanvas({
                       : 'bg-bega-bg-1 text-bega-text-1 rounded-bl-sm'
                     }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user' ? stripShortlistContext(msg.content) : msg.content}
                 </div>
               </div>
             ))

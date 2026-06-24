@@ -7,6 +7,7 @@ import { ShortlistProvider, useShortlist, type ShortlistEntry } from '@/context/
 import { generateBom } from '@/lib/api';
 import {
   COMPARE_ACTION, GENERATE_BOM_ACTION, REQUEST_QUOTE_ACTION, CONNECT_ACTION, FIND_REP_ACTION,
+  detectConnectIntent,
 } from '@/lib/flowActions';
 import type { BomReport, ImageAttachment } from '@/types';
 import ChatInput from './ChatInput';
@@ -150,9 +151,23 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
   // freeform suggested-action pills. Invisibly prepends shortlist/BOM state so the agent
   // can route flow intent expressed in free text back onto the same suggested action pills.
   const handleTypedSend = useCallback((text: string, image?: ImageAttachment) => {
+    // Deterministic intent match takes precedence over the agent — see detectConnectIntent.
+    const intentAction = !image ? detectConnectIntent(text) : null;
+    if (intentAction === FIND_REP_ACTION) {
+      pushFlowStep(text, { content: '', flowCard: { kind: 'find_rep' } });
+      return;
+    }
+    if (intentAction === CONNECT_ACTION) {
+      pushFlowStep(text, {
+        content: 'Tell us a bit about your inquiry and a BEGA representative will follow up.',
+        flowCard: { kind: 'connect' },
+      });
+      return;
+    }
+
     const prefix = buildShortlistContextPrefix(shortlistEntries, lastBomReport);
     void sendMessage(prefix + text, image, text);
-  }, [shortlistEntries, lastBomReport, sendMessage]);
+  }, [shortlistEntries, lastBomReport, sendMessage, pushFlowStep]);
 
   const handleSuggestedAction = useCallback((action: string) => {
     switch (action) {
@@ -302,6 +317,7 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
                 isLast={idx === messages.length - 1}
                 hasBom={lastBomReport != null}
                 onSuggestedAction={handleSuggestedAction}
+                onTourActiveChange={(active) => { tourActiveRef.current = active; }}
               />
             ))}
             <div ref={bottomRef} />

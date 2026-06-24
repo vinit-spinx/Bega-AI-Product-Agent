@@ -64,7 +64,17 @@ function SpecRow({ label, values }: { label: string; values: React.ReactNode[] }
 // Reads live from ShortlistContext so quantity edits / removals are reflected
 // immediately wherever this card is rendered in the message history.
 
-export default function ComparisonCard() {
+interface ComparisonCardProps {
+  /** Scopes the in-card tour to this message's elements — chat history can contain
+   *  multiple comparison cards, and an unscoped selector would always match the
+   *  first one in the DOM instead of the card the visitor is actually looking at. */
+  messageId: string;
+  /** Forwarded to CompareTour so the parent chat can suspend auto-scroll-to-bottom
+   *  while the tour controls scroll position itself. */
+  onTourActiveChange?: (active: boolean) => void;
+}
+
+export default function ComparisonCard({ messageId, onTourActiveChange }: ComparisonCardProps) {
   const { entries, unpin, setQuantity } = useShortlist();
 
   if (entries.length === 0) {
@@ -322,7 +332,7 @@ export default function ComparisonCard() {
         </table>
       </div>
 
-      <CompareTour />
+      <CompareTour messageId={messageId} onActiveChange={onTourActiveChange} />
     </div>
   );
 }

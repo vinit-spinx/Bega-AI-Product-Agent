@@ -345,6 +345,14 @@ export interface ChatMessage {
   createdAt?: string;
 }
 
+// ChatWindow prepends an invisible "[Shortlist context — not visible to user: ...]"
+// block to outgoing user messages so the agent can see shortlist/BOM state. It's
+// persisted verbatim in ChatSession history, but admins should only see what the
+// visitor actually typed.
+export function stripShortlistContext(content: string): string {
+  return content.replace(/^\[Shortlist context — not visible to user:[^\]]*\]\n*/, '');
+}
+
 // ── API calls ─────────────────────────────────────────────────────────────────
 
 export type TimeRange = '7D' | '30D' | '90D' | '12M';

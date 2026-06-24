@@ -24,6 +24,9 @@ interface MessageBubbleProps {
    *  since the flow has already moved past comparing into quote/connect territory. */
   hasBom: boolean;
   onSuggestedAction: (action: string) => void;
+  /** Forwarded to ComparisonCard's CompareTour so the parent chat can suspend
+   *  auto-scroll-to-bottom while the tour controls scroll position itself. */
+  onTourActiveChange?: (active: boolean) => void;
 }
 
 // Inline BEGA B mark used as the AI avatar
@@ -49,7 +52,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function MessageBubble({ message, sessionId, isLast, hasBom, onSuggestedAction }: MessageBubbleProps) {
+export default function MessageBubble({ message, sessionId, isLast, hasBom, onSuggestedAction, onTourActiveChange }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const { entries: shortlistEntries } = useShortlist();
 
@@ -90,7 +93,7 @@ export default function MessageBubble({ message, sessionId, isLast, hasBom, onSu
   ];
 
   return (
-    <div className="flex justify-start px-4 py-2 animate-slide-in-left">
+    <div id={`msg-${message.id}`} className="flex justify-start px-4 py-2 animate-slide-in-left">
       <div className="max-w-full w-full">
 
         {/* ── Vision context panel ─────────────────────────────────────────── */}
@@ -180,7 +183,9 @@ export default function MessageBubble({ message, sessionId, isLast, hasBom, onSu
               <BomTable report={message.bomReport} />
             )}
 
-            {message.flowCard?.kind === 'comparison' && <ComparisonCard />}
+            {message.flowCard?.kind === 'comparison' && (
+              <ComparisonCard messageId={message.id} onTourActiveChange={onTourActiveChange} />
+            )}
             {message.flowCard?.kind === 'quote' && (
               <QuoteFormCard sessionId={sessionId} bomReport={message.flowCard.bomReport} />
             )}

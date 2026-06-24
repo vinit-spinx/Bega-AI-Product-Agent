@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  fetchConversations, fetchSessionConversation,
+  fetchConversations, fetchSessionConversation, stripShortlistContext,
   type ConversationRow, type ChatMessage, type LeadTemperature,
 } from '@/services/insights/insightsV2Service';
 import { useGSAPEntrance } from '@/hooks/useGSAPEntrance';
@@ -150,7 +150,7 @@ function ConversationOffcanvas({
                       : 'bg-bega-bg-1 text-bega-text-1 rounded-bl-sm'
                     }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user' ? stripShortlistContext(msg.content) : msg.content}
                 </div>
               </div>
             ))

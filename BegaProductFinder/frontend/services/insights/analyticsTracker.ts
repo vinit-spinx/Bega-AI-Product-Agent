@@ -28,3 +28,18 @@ export function trackEvent(type: EventType, name: string, sessionId?: string): v
     keepalive: true,
   }).catch(() => { /* intentionally ignored */ });
 }
+
+/**
+ * Fire-and-forget — triggers AI summary + funnel/lead classification for a session
+ * right away. A submitted contact/quote form is itself a terminal "lead captured"
+ * signal, so the admin panel shouldn't have to wait for "New Chat" or the 30-minute
+ * inactivity sweep to pick it up. keepalive survives the page staying open.
+ */
+export function triggerSessionFinalize(sessionId: string): void {
+  if (typeof window === 'undefined' || !sessionId) return;
+
+  fetch(`${API_URL}/api/chat/session/${sessionId}/finalize`, {
+    method: 'POST',
+    keepalive: true,
+  }).catch(() => { /* intentionally ignored */ });
+}

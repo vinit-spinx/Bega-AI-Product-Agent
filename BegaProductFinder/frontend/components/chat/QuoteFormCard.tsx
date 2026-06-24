@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { BomReport } from '@/types';
 import { useShortlist } from '@/context/ShortlistContext';
-import { trackEvent } from '@/services/insights/analyticsTracker';
+import { trackEvent, triggerSessionFinalize } from '@/services/insights/analyticsTracker';
 import { TextField, SelectField, LocationAutocompleteField, TextAreaField, ErrorMsg, type GeocodeResult } from './ContactFormSteps';
 
 const DESIGNATIONS = ['Architect', 'Electrician', 'Contractor', 'Interior Designer', 'Lighting Designer', 'End User', 'Other'];
@@ -71,6 +71,7 @@ export default function QuoteFormCard({ sessionId, bomReport }: QuoteFormCardPro
         itemCount: entries.length,
         hasBom: !!bomReport,
       }), sessionId);
+      triggerSessionFinalize(sessionId);
 
       setSubmitted(true);
     } catch (err) {

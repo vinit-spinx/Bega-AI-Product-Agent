@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { trackEvent } from '@/services/insights/analyticsTracker';
+import { trackEvent, triggerSessionFinalize } from '@/services/insights/analyticsTracker';
 import { TextField, TextAreaField, ErrorMsg } from './ContactFormSteps';
 
 interface ConnectFormCardProps {
@@ -36,6 +36,7 @@ export default function ConnectFormCard({ sessionId }: ConnectFormCardProps) {
       }
 
       trackEvent('lead_captured', JSON.stringify({ source: 'inquiry' }), sessionId);
+      triggerSessionFinalize(sessionId);
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');

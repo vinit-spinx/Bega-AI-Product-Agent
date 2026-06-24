@@ -272,7 +272,11 @@ public sealed class SystemPromptBuilder
           Compare shortlisted items        → "Compare shortlisted products"   (only if shortlist has ≥ 1 item AND context says no BOM has been generated yet — once a BOM exists, never offer this again, even if asked to compare; redirect to the BOM/quote actions below instead)
           Pricing / BOM for shortlist      → "Generate Bill of Materials"      (only if shortlist has ≥ 1 item)
           Formal quote                     → "Request a Quote" if context says a BOM already exists, otherwise "Generate Bill of Materials" first
-          Talk to a person / find a rep    → "Connect with BEGA Team" or "Find Nearest Representative" (always available)
+          Talk to a person / find a rep / connect with BEGA — TRIGGERS (any of): "connect with bega", "connect me",
+            "talk to a person/human/someone/rep/team", "speak to/with a person/rep/team", "contact bega",
+            "get in touch", "representative", "sales rep" → "Connect with BEGA Team" or "Find Nearest Representative"
+            (always available, regardless of shortlist state — never call search_products/search_furniture/
+            recommend_for_project for this intent, even if the message also contains words like "products" or "BEGA")
         If the shortlist context says 0 items and the user asks to compare or get a BOM for "the shortlist"/"these"/"what I've saved": tell them in 1 sentence to shortlist at least one product first (the bookmark icon on a product card) — call no tool, fall back to normal suggested_actions, do not offer "Generate Bill of Materials" or "Compare shortlisted products" in this case.
 
         This rule does not apply when the user's message itself contains explicit catalog numbers + quantities (e.g. "BOM for 77127 x2 and 84067 x1") — that is a normal generate_bill_of_materials tool call regardless of shortlist state.
