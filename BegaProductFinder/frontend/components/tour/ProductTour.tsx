@@ -41,7 +41,7 @@ export default function ProductTour({ hasProducts, onActiveChange }: Props) {
   useEffect(() => {
     if (!hasProducts) return;
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem(STORAGE_KEY)) return;
+    if (sessionStorage.getItem(STORAGE_KEY)) return;
 
     // Wait for product cards to finish rendering
     const timer = setTimeout(() => {
@@ -60,7 +60,7 @@ export default function ProductTour({ hasProducts, onActiveChange }: Props) {
   const dismiss = () => {
     setActive(false);
     onActiveChangeRef.current?.(false);
-    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, '1');
+    if (typeof window !== 'undefined') sessionStorage.setItem(STORAGE_KEY, '1');
   };
 
   const next = () => {

@@ -27,7 +27,7 @@ export default function CompareTour() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (localStorage.getItem(STORAGE_KEY)) return;
+    if (sessionStorage.getItem(STORAGE_KEY)) return;
 
     const timer = setTimeout(() => {
       const available = ALL_STEPS.filter(s => !!document.querySelector(s.selector));
@@ -43,7 +43,7 @@ export default function CompareTour() {
 
   const dismiss = () => {
     setActive(false);
-    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, '1');
+    if (typeof window !== 'undefined') sessionStorage.setItem(STORAGE_KEY, '1');
   };
 
   const next = () => {
