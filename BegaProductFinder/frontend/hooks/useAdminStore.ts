@@ -53,3 +53,34 @@ export function useHeroContent(): HeroContent {
   }, []);
   return hero;
 }
+
+/**
+ * True once the suggestions fetch has resolved, or once `maxWaitMs` has elapsed —
+ * whichever comes first. Used to hold the /new-ui hero's entrance animation at its
+ * starting frame until the suggestion cards are actually ready to render, so the
+ * whole group (light, title, suggestions) starts its reveal on the same frame
+ * instead of the cards arriving late and animating in on their own afterwards.
+ * The timeout cap means a slow/failed fetch never blocks the hero indefinitely.
+ */
+export function useSuggestionsReady(maxWaitMs = 700): boolean {
+  // Always starts false on both server and client (same SSR-safe pattern as the
+  // hooks above) — reading suggestionsStore.isLoaded() directly in the initializer
+  // caused a hydration mismatch: the server's module instance is always fresh
+  // (isLoaded() === false), but the client's singleton store can already have
+  // isLoaded() === true left over from an earlier client-side navigation, so the
+  // two initial renders disagreed.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (suggestionsStore.isLoaded()) {
+      setReady(true);
+      return;
+    }
+    const unsubscribe = suggestionsStore.subscribe(() => setReady(true));
+    const timer = setTimeout(() => setReady(true), maxWaitMs);
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
+  }, [maxWaitMs]);
+  return ready;
+}

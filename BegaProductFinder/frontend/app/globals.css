@@ -46,6 +46,20 @@
   to   { transform: translateY(-18px) translateX(6px)   scale(1.15); opacity: 0.2;  }
 }
 
+/* ── Hero lamp glow (new-ui WhiteGlow) ───────────────────────────────────────
+   Pure CSS keyframes instead of JS-driven (framer-motion) animation — opacity
+   and transform run on the compositor thread independent of React/main-thread
+   work happening during initial mount (session/hero-content fetches), which is
+   what caused the expand/fade-in to read as jerky rather than a smooth ignite. */
+@keyframes lamp-fade-in {
+  from { opacity: 0; }
+  to   { opacity: var(--lamp-opacity, 1); }
+}
+@keyframes lamp-grow-x {
+  from { transform: scaleX(0.5); }
+  to   { transform: scaleX(1); }
+}
+
 @layer utilities {
   /* Typing indicator dots */
   .typing-dot-1 { animation: typing-dot 1.4s infinite ease-in-out; }

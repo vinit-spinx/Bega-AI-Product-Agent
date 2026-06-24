@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import type { CSSProperties } from 'react';
 import { useChatSession } from '@/hooks/useChatSession';
-import { useHeroContent } from '@/hooks/useAdminStore';
+import { useHeroContent, useSuggestionsReady } from '@/hooks/useAdminStore';
 import { ShortlistProvider, useShortlist } from '@/context/ShortlistContext';
 import CompareDrawer from '@/components/product/CompareDrawer';
 import ChatInput from '@/components/chat/ChatInput';
@@ -15,8 +15,36 @@ import SuggestionCards from '@/components/chat/SuggestionCards';
 // How long the light takes to fully expand — content fade-in below uses the exact
 // same delay/duration/ease so both animations run on an identical timeline.
 const GLOW_DELAY = 0.3;
-const GLOW_DURATION = 0.8;
-const GLOW_TRANSITION = { ease: 'easeInOut' as const, delay: GLOW_DELAY, duration: GLOW_DURATION };
+const GLOW_DURATION = 1.8;
+// Gentle ease-out cubic-bezier — front-loads the easing so it decelerates gradually
+// all the way to the end instead of the sharper acceleration of built-in curves.
+// The glow itself uses plain CSS @keyframes (see globals.css: lamp-fade-in /
+// lamp-grow-x) rather than framer-motion — opacity/transform keyframe animations
+// are handed to the compositor thread up front, so they stay smooth even while
+// React is busy mounting the chat session, hero content, and suggestion cards on
+// the main thread. A JS-driven (rAF) animation has to fight for that same thread,
+// which is what was producing the stutter.
+const GLOW_CSS_TIMING = `${GLOW_DURATION}s ${GLOW_DELAY}s cubic-bezier(0.16, 1, 0.3, 1) both`;
+
+// `ready` holds every animation paused at its very first frame (elapsed time frozen
+// at 0, including the delay phase) until the suggestion cards have actually loaded
+// — see useSuggestionsReady. That's what makes the light, title, and suggestions
+// all start their reveal on the same frame instead of the cards arriving late.
+function fadeAndGrow(targetOpacity: number, ready: boolean): CSSProperties {
+  return {
+    ['--lamp-opacity' as string]: targetOpacity,
+    animation: `lamp-fade-in ${GLOW_CSS_TIMING}, lamp-grow-x ${GLOW_CSS_TIMING}`,
+    animationPlayState: ready ? 'running' : 'paused',
+  } as CSSProperties;
+}
+
+function fadeOnly(targetOpacity: number, ready: boolean): CSSProperties {
+  return {
+    ['--lamp-opacity' as string]: targetOpacity,
+    animation: `lamp-fade-in ${GLOW_CSS_TIMING}`,
+    animationPlayState: ready ? 'running' : 'paused',
+  } as CSSProperties;
+}
 
 // Animated white "lamp" glow on a black backdrop — same lamp-effect technique as the
 // shadcn Hero block, recolored to white-on-black instead of using the primary token.
@@ -25,38 +53,36 @@ const GLOW_TRANSITION = { ease: 'easeInOut' as const, delay: GLOW_DELAY, duratio
 // a blurred element forces the browser to re-layout and repaint the whole blurred
 // region every frame, which is what produced the jerky/stuttery expansion on load.
 // Transforms are compositor-only, so the same visual expansion stays smooth.
-function WhiteGlow() {
-  const transition = GLOW_TRANSITION;
-
+function WhiteGlow({ ready }: { ready: boolean }) {
   return (
     <div className="absolute top-0 isolate z-0 flex w-screen flex-1 items-start justify-center pointer-events-none">
-      <div className="absolute top-0 z-50 h-48 w-screen bg-transparent opacity-10 backdrop-blur-md" />
+      <div
+        style={fadeOnly(0.1, ready)}
+        className="absolute top-0 z-50 h-48 w-screen bg-transparent backdrop-blur-md transform-gpu"
+      />
 
       {/* Main glow — bright core directly under the source */}
-      <div className="absolute inset-auto z-50 h-36 w-[28rem] -translate-y-[-30%] rounded-full bg-white/45 opacity-65 blur-3xl" />
+      <div
+        style={fadeOnly(0.65, ready)}
+        className="absolute inset-auto z-50 h-36 w-[28rem] -translate-y-[-30%] rounded-full bg-white/45 blur-3xl transform-gpu"
+      />
 
       {/* Lamp effect — grows from the center, so scale on both axes is fine */}
-      <motion.div
-        initial={{ scaleX: 0.5 }}
-        animate={{ scaleX: 1 }}
-        transition={transition}
-        className="absolute top-0 z-30 h-36 w-64 -translate-y-[20%] rounded-full bg-white/50 blur-2xl"
+      <div
+        style={fadeAndGrow(1, ready)}
+        className="absolute top-0 z-30 h-36 w-64 -translate-y-[20%] rounded-full bg-white/50 blur-2xl transform-gpu"
       />
 
       {/* Top line — grows from the center */}
-      <motion.div
-        initial={{ scaleX: 0.5 }}
-        animate={{ scaleX: 1 }}
-        transition={transition}
-        className="absolute inset-auto z-50 h-0.5 w-[30rem] -translate-y-[-10%] bg-white/60"
+      <div
+        style={fadeAndGrow(1, ready)}
+        className="absolute inset-auto z-50 h-0.5 w-[30rem] -translate-y-[-10%] bg-white/60 transform-gpu"
       />
 
       {/* Left gradient cone — anchored to the right edge, grows leftward */}
-      <motion.div
-        initial={{ opacity: 0.5, scaleX: 0.5 }}
-        animate={{ opacity: 1, scaleX: 1 }}
-        transition={transition}
+      <div
         style={{
+          ...fadeAndGrow(1, ready),
           backgroundImage:
             'conic-gradient(from 70deg at center top, rgba(255,255,255,0.5), transparent, transparent)',
           // Bright near the source, then a long, gradual taper that reaches all the
@@ -66,18 +92,16 @@ function WhiteGlow() {
           WebkitMaskImage: 'linear-gradient(to bottom, white 0%, rgba(255,255,255,0.65) 30%, rgba(255,255,255,0.2) 70%, transparent 100%)',
           transformOrigin: 'right center',
         }}
-        className="absolute inset-auto right-1/2 h-[56rem] overflow-visible w-[30rem]"
+        className="absolute inset-auto right-1/2 h-[56rem] overflow-visible w-[30rem] transform-gpu"
       >
         <div className="absolute w-[100%] left-0 bg-black h-[26rem] bottom-0 z-20 [mask-image:linear-gradient(to_top,white,transparent)]" />
         <div className="absolute w-40 h-[100%] left-0 bg-black bottom-0 z-20 [mask-image:linear-gradient(to_right,white,transparent)]" />
-      </motion.div>
+      </div>
 
       {/* Right gradient cone — anchored to the left edge, grows rightward */}
-      <motion.div
-        initial={{ opacity: 0.5, scaleX: 0.5 }}
-        animate={{ opacity: 1, scaleX: 1 }}
-        transition={transition}
+      <div
         style={{
+          ...fadeAndGrow(1, ready),
           backgroundImage:
             'conic-gradient(from 290deg at center top, transparent, transparent, rgba(255,255,255,0.5))',
           // Bright near the source, then a long, gradual taper that reaches all the
@@ -87,11 +111,11 @@ function WhiteGlow() {
           WebkitMaskImage: 'linear-gradient(to bottom, white 0%, rgba(255,255,255,0.65) 30%, rgba(255,255,255,0.2) 70%, transparent 100%)',
           transformOrigin: 'left center',
         }}
-        className="absolute inset-auto left-1/2 h-[56rem] w-[30rem]"
+        className="absolute inset-auto left-1/2 h-[56rem] w-[30rem] transform-gpu"
       >
         <div className="absolute w-40 h-[100%] right-0 bg-black bottom-0 z-20 [mask-image:linear-gradient(to_left,white,transparent)]" />
         <div className="absolute w-[100%] right-0 bg-black h-[26rem] bottom-0 z-20 [mask-image:linear-gradient(to_top,white,transparent)]" />
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -111,6 +135,7 @@ function NewUiContent() {
   const { messages, sessionId, isLoading, sendMessage, clearSession } = useChatSession();
   const { clearAll: clearShortlist } = useShortlist();
   const hero = useHeroContent();
+  const suggestionsReady = useSuggestionsReady();
   const bottomRef = useRef<HTMLDivElement>(null);
   const tourActiveRef = useRef(false);
 
@@ -164,15 +189,19 @@ function NewUiContent() {
       {isEmpty ? (
         /* ── Hero landing — black backdrop, animated white glow ──────────── */
         <div className="relative flex-1 overflow-hidden bg-black">
-          <WhiteGlow />
+          <WhiteGlow ready={suggestionsReady} />
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={GLOW_TRANSITION}
+          {/* Plain CSS animation (not framer-motion) so this starts on the exact same
+              paint frame as the WhiteGlow keyframes below — a JS-driven (framer-motion)
+              fade here was committing a beat after the CSS glow animation began,
+              which read as the content lagging behind the light spreading toward it.
+              Held paused (via fadeOnly's animationPlayState) until suggestionsReady so
+              this never starts its reveal before the suggestion cards are ready. */}
+          <div
+            style={fadeOnly(1, suggestionsReady)}
             className="absolute inset-0 flex flex-col items-center justify-center px-6 pb-12"
           >
-            <div className="flex flex-col items-center mb-10 relative z-10">
+            <div className="flex flex-col items-center mt-10 mb-10 relative z-10">
               <div>
                 <svg width="108" height="33" viewBox="0 0 89 27" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <g fill="#FFFFFF" fillRule="evenodd">
@@ -199,9 +228,9 @@ function NewUiContent() {
             {/* ── Input + suggestion grid ── */}
             <div className="w-full max-w-2xl relative z-10 mt-2">
               <ChatInput onSend={sendMessage} isLoading={isLoading} onClear={handleNewChat} variant="hero" />
-              <SuggestionCards onSend={sendMessage} />
+              <SuggestionCards onSend={sendMessage} syncWithParent />
             </div>
-          </motion.div>
+          </div>
         </div>
       ) : (
         /* ── Active chat ──────────────────────────────────────────────────── */
