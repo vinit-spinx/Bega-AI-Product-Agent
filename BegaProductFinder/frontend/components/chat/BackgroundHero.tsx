@@ -17,7 +17,7 @@ export default function BackgroundHero() {
         className="absolute inset-0"
         style={{
           background:
-            'linear-gradient(to bottom, rgba(247,245,242,0.95), rgba(247,245,242,0.98))',
+            'linear-gradient(to bottom, rgba(247,247,246,0.95), rgba(247,247,246,0.98))',
         }}
       />
     </div>

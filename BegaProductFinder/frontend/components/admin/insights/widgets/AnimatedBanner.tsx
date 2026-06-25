@@ -38,7 +38,7 @@ export default function AnimatedBanner({ eyebrow, title, description }: Props) {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-white/50">{eyebrow}</p>
         </div>
-        <h1 className="text-[22px] font-semibold text-white tracking-tight mb-1">{title}</h1>
+        <h1 className="font-serif text-[24px] font-semibold text-white tracking-tight mb-1">{title}</h1>
         <p className="text-[12px] text-white/50 max-w-xl">{description}</p>
       </div>
     </div>

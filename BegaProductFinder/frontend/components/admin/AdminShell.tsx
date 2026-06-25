@@ -11,9 +11,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   return (
     <AdminAuthGuard>
       {isLoginPage ? (
-        <div className="h-full bg-[#F7F5F2]">{children}</div>
+        <div className="h-full bg-bega-bg-1">{children}</div>
       ) : (
-        <div className="flex h-full bg-[#F7F5F2] overflow-hidden">
+        <div className="flex h-full bg-bega-bg-1 overflow-hidden">
           <AdminSidebar />
           <main className="flex-1 min-w-0 overflow-y-auto">{children}</main>
         </div>

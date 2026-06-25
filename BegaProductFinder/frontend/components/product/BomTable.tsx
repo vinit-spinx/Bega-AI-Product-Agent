@@ -55,7 +55,7 @@ export default function BomTable({ report }: BomTableProps) {
       return `
         <tr style="background:${rowBg}; border-bottom:1px solid #e5e7eb;">
           <td style="padding:8px 10px; color:#6b7280;">${item.areaLabel ?? '—'}</td>
-          <td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#b45309;">${item.catalogNumber}</td>
+          <td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#111827;">${item.catalogNumber}</td>
           <td style="padding:8px 10px; color:#111827;">${item.description ?? '—'}</td>
           <td style="padding:8px 10px; color:#374151;">${item.familyName ?? '—'}</td>
           <td style="padding:8px 10px; text-align:center; color:#111827;">${item.quantity}</td>
@@ -68,8 +68,8 @@ export default function BomTable({ report }: BomTableProps) {
 
     const energySection = hasEnergy ? `
       <div style="margin-top:24px; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">
-        <div style="background:#fefce8; padding:10px 14px; border-bottom:1px solid #e5e7eb;">
-          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#92400e;">
+        <div style="background:#f7f7f6; padding:10px 14px; border-bottom:1px solid #e5e7eb;">
+          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#111827;">
             ⚡ Energy &amp; Power Budget
           </span>
           <span style="font-size:10px; color:#9ca3af; margin-left:8px;">${HOURS_PER_DAY} hr/day · $${COST_PER_KWH.toFixed(2)}/kWh</span>
@@ -78,7 +78,7 @@ export default function BomTable({ report }: BomTableProps) {
           <tr>
             <td style="padding:12px 14px; border-right:1px solid #e5e7eb; width:33%;">
               <div style="font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:4px;">Total System Wattage</div>
-              <div style="font-size:20px; font-weight:700; color:#b45309;">${totalWatts.toFixed(1)} W</div>
+              <div style="font-size:20px; font-weight:700; color:#111827;">${totalWatts.toFixed(1)} W</div>
               <div style="font-size:10px; color:#9ca3af; margin-top:2px;">across all lighting fixtures</div>
             </td>
             <td style="padding:12px 14px; border-right:1px solid #e5e7eb; width:33%;">
@@ -88,7 +88,7 @@ export default function BomTable({ report }: BomTableProps) {
             </td>
             <td style="padding:12px 14px; width:33%;">
               <div style="font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:4px;">Estimated Annual Cost</div>
-              <div style="font-size:20px; font-weight:700; color:#b45309;">$${annualCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div style="font-size:20px; font-weight:700; color:#111827;">$${annualCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               <div style="font-size:10px; color:#9ca3af; margin-top:2px;">per year</div>
             </td>
           </tr>
@@ -139,7 +139,7 @@ export default function BomTable({ report }: BomTableProps) {
     </div>
     <div style="text-align:right;">
       <div style="font-size:18px; font-weight:700; color:#111827;">Bill of Materials</div>
-      ${report.projectName ? `<div style="font-size:13px; color:#b45309; font-weight:600; margin-top:4px;">${report.projectName}</div>` : ''}
+      ${report.projectName ? `<div style="font-size:13px; color:#111827; font-weight:600; margin-top:4px;">${report.projectName}</div>` : ''}
       <div style="font-size:11px; color:#6b7280; margin-top:4px;">Generated: ${printDate}</div>
       <div style="font-size:11px; color:#6b7280; margin-top:2px;">${report.itemCount} line item${report.itemCount === 1 ? '' : 's'} · ${report.currency}</div>
     </div>
@@ -167,7 +167,7 @@ export default function BomTable({ report }: BomTableProps) {
         <td style="padding:10px 10px; text-align:center;">${report.itemCount}</td>
         ${hasWattageCol ? `<td style="padding:10px 10px; text-align:right; font-family:monospace;">${totalWatts > 0 ? totalWatts.toFixed(1) + ' W' : ''}</td>` : ''}
         <td></td>
-        <td style="padding:10px 10px; text-align:right; font-family:monospace; color:#fbbf24; font-size:14px;">$${report.subtotalDnp.toFixed(2)}</td>
+        <td style="padding:10px 10px; text-align:right; font-family:monospace; color:#ffffff; font-size:14px;">$${report.subtotalDnp.toFixed(2)}</td>
         <td></td>
       </tr>
       ${msrpRow}
@@ -264,7 +264,7 @@ export default function BomTable({ report }: BomTableProps) {
       {/* ── Header bar ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-bega-border-1 bg-bega-bg-1">
         <div>
-          <h3 className="font-semibold text-bega-text-1 text-sm">
+          <h3 className="font-serif font-semibold text-bega-text-1 text-base">
             Bill of Materials{report.projectName ? ` — ${report.projectName}` : ''}
           </h3>
           <p className="text-[11px] text-bega-text-3 mt-0.5">
@@ -353,16 +353,16 @@ export default function BomTable({ report }: BomTableProps) {
           </tbody>
 
           <tfoot>
-            <tr className="bg-bega-bg-2 border-t-2 border-bega-border-2 font-semibold text-bega-text-1">
+            <tr className="bg-bega-black border-t-2 border-bega-black font-semibold text-white">
               <td colSpan={4} className="px-3 py-2.5">Total</td>
               <td className="px-3 py-2.5 text-center">{report.itemCount}</td>
               {hasWattageCol && (
-                <td className="px-3 py-2.5 text-right font-mono text-bega-text-2 whitespace-nowrap">
+                <td className="px-3 py-2.5 text-right font-mono text-white/70 whitespace-nowrap">
                   {totalWatts > 0 ? `${totalWatts.toFixed(1)} W` : ''}
                 </td>
               )}
               <td />
-              <td className="px-3 py-2.5 text-right font-mono text-bega-black font-bold">
+              <td className="px-3 py-2.5 text-right font-mono text-white font-bold">
                 ${report.subtotalDnp.toFixed(2)}
               </td>
               <td />

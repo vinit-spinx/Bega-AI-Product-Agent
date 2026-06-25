@@ -14,7 +14,7 @@ export default function PageHeader({ title, description, action, count }: PageHe
     <div className="flex items-start justify-between gap-6 mb-8">
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-[22px] font-semibold text-bega-text-1 tracking-tight">{title}</h1>
+          <h1 className="font-serif text-[24px] font-semibold text-bega-text-1 tracking-tight">{title}</h1>
           {count !== undefined && (
             <span className="text-[11px] font-semibold text-bega-text-3 bg-bega-bg-2 px-2 py-0.5 rounded-full">
               {count}

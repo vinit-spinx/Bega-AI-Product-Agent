@@ -147,7 +147,8 @@ export default function ChatInput({ onSend, isLoading, onClear, variant = 'bar' 
     return (
       
       <div className="rounded-2xl border border-bega-border-2 bg-white
-                      shadow-[0_4px_24px_0_rgb(0_0_0/0.08)] overflow-hidden">
+                      shadow-[0_4px_24px_0_rgb(0_0_0/0.08)] overflow-hidden
+                      focus-within:border-bega-black transition-colors">
         {hiddenFileInput}
 
         {imagePreviewStrip && (
@@ -218,7 +219,7 @@ export default function ChatInput({ onSend, isLoading, onClear, variant = 'bar' 
         onSubmit={handleSubmit}
         className="rounded-2xl border border-bega-border-2 bg-white
                    shadow-[0_2px_12px_0_rgb(0_0_0/0.06)] flex items-end gap-2 px-4 py-3
-                   focus-within:border-bega-border-3 transition-colors"
+                   focus-within:border-bega-black transition-colors"
       >
         <textarea
           ref={textareaRef}

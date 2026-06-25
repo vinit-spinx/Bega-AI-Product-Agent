@@ -54,7 +54,7 @@ function LeadInsightModal({ card, style, dash, circumference, onClose }: {
           <div className="flex items-start gap-4 mb-4">
             <div className="relative flex-shrink-0 w-11 h-11">
               <svg viewBox="0 0 36 36" className="w-11 h-11 -rotate-90">
-                <circle cx="18" cy="18" r="15" fill="none" stroke="#F0EDE9" strokeWidth="3" />
+                <circle cx="18" cy="18" r="15" fill="none" stroke="#E6E6E3" strokeWidth="3" />
                 <circle
                   cx="18" cy="18" r="15" fill="none"
                   stroke={style.dot} strokeWidth="3"
@@ -147,7 +147,7 @@ export default function LeadInsightCard({ card, index = 0 }: Props) {
             {/* Score arc */}
             <div className="relative flex-shrink-0 w-9 h-9">
               <svg viewBox="0 0 36 36" className="w-9 h-9 -rotate-90">
-                <circle cx="18" cy="18" r="15" fill="none" stroke="#F0EDE9" strokeWidth="3" />
+                <circle cx="18" cy="18" r="15" fill="none" stroke="#E6E6E3" strokeWidth="3" />
                 <circle
                   cx="18" cy="18" r="15" fill="none"
                   stroke={style.dot} strokeWidth="3"

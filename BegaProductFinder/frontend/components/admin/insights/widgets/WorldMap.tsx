@@ -65,13 +65,13 @@ export default function WorldMap({ cities, height = 320 }: { cities: MapCity[]; 
                     const centroid = geoCentroid(geo as never) as [number, number];
                     setPosition({ coordinates: centroid, zoom: 4 });
                   }}
-                  fill="#EDEAE5"
-                  stroke="#D5CFC9"
+                  fill="#EFEFED"
+                  stroke="#D3D3CF"
                   strokeWidth={0.5}
                   style={{
                     default: { outline: 'none', cursor: 'pointer' },
-                    hover: { outline: 'none', fill: '#DEDAD5', cursor: 'pointer' },
-                    pressed: { outline: 'none', fill: '#D5CFC9' },
+                    hover: { outline: 'none', fill: '#E2E2DF', cursor: 'pointer' },
+                    pressed: { outline: 'none', fill: '#D3D3CF' },
                   }}
                 />
               ))
@@ -79,7 +79,7 @@ export default function WorldMap({ cities, height = 320 }: { cities: MapCity[]; 
           </Geographies>
           {cities.map((c, i) => (
             <Marker key={i} coordinates={[c.lon, c.lat]}>
-              <circle r={radius(c.count) / position.zoom} fill="#B5862E" fillOpacity={0.75} stroke="#8C6422" strokeWidth={0.5 / position.zoom}>
+              <circle r={radius(c.count) / position.zoom} fill="#1A1A1A" fillOpacity={0.75} stroke="#1A1A1A" strokeWidth={0.5 / position.zoom}>
                 <title>{`${c.city}, ${c.country} — ${c.count} inquir${c.count === 1 ? 'y' : 'ies'}`}</title>
               </circle>
             </Marker>

@@ -40,7 +40,8 @@ export default function ProductCard({ product, sessionId }: ProductCardProps) {
 
   return (
     <div className="group rounded-xl border border-bega-border-1 bg-white overflow-hidden animate-fade-in
-                    flex flex-col shadow-card hover:shadow-card-hover transition-all duration-200 hover:-translate-y-px">
+                    flex flex-col shadow-card hover:shadow-card-hover hover:border-bega-border-2
+                    transition-all duration-200 hover:-translate-y-0.5">
       {/* ── Image + header ─────────────────────────────────────────────────── */}
       <div className="flex gap-0">
         {/* Product image — taller well */}

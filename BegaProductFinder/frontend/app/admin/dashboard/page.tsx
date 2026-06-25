@@ -14,7 +14,7 @@ const KPI_ICONS = {
   gaps:    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full"><path d="M10 2l7 3.5v7l-7 3.5-7-3.5v-7z" /><path d="M10 2v14M3 6l7 3.5 7-3.5" /></svg>,
 };
 
-const DONUT_COLORS = ['#1A1A1A', '#B5862E', '#9A9590', '#B5A99A', '#D5CFC9'];
+const DONUT_COLORS = ['#1A1A1A', '#575652', '#97968F', '#BBBBB6', '#D3D3CF'];
 
 function CategoryDonut({ data }: { data: DashboardData['topCategories'] }) {
   if (!data.length) return <p className="text-[12px] text-bega-text-3 py-10 text-center">No category data yet.</p>;

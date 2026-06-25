@@ -130,7 +130,7 @@ export default function CommandCenterTab() {
             data={data.activity}
             series={[
               { key: 'queries', label: 'Queries', color: '#1A1A1A' },
-              { key: 'leads',   label: 'Leads',   color: '#B5A99A' },
+              { key: 'leads',   label: 'Leads',   color: '#97968F' },
             ]}
             height={192}
           />
@@ -141,11 +141,11 @@ export default function CommandCenterTab() {
         )}
       </div>
 
-      {/* Lead Intelligence Feed */}
+      {/* Leads Feed */}
       <section>
         <div className="flex items-baseline justify-between gap-3 mb-4">
           <div className="flex items-baseline gap-3">
-            <h2 className="text-[14px] font-semibold text-bega-text-1">Lead Intelligence Feed</h2>
+            <h2 className="text-[14px] font-semibold text-bega-text-1">Leads Feed</h2>
             <p className="text-[11px] text-bega-text-3">AI-generated insights from real lead data · click to expand</p>
           </div>
           {!leadLoading && leadData?.cards.length ? (
@@ -157,7 +157,7 @@ export default function CommandCenterTab() {
 
         {!leadLoading && !leadData?.hasData ? (
           <div className="bg-white border border-bega-border-1 rounded-2xl py-12 text-center">
-            <p className="text-[13px] font-medium text-bega-text-2 mb-1">No Lead Intelligence Yet</p>
+            <p className="text-[13px] font-medium text-bega-text-2 mb-1">No Leads Yet</p>
             <p className="text-[12px] text-bega-text-3">
               AI-powered insights appear here once visitors submit Connect with BEGA inquiries.
             </p>

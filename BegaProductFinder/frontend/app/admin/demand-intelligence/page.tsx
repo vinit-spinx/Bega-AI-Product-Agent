@@ -7,7 +7,7 @@ export default function DemandIntelligencePage() {
     <div className="px-6 py-7">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-[22px] font-semibold text-bega-text-1 tracking-tight mb-1">Demand Intelligence</h1>
+          <h1 className="font-serif text-[24px] font-semibold text-bega-text-1 tracking-tight mb-1">Demand Trends</h1>
           <p className="text-[13px] text-bega-text-3">
             Product demand, specification trends, and content effectiveness.
           </p>

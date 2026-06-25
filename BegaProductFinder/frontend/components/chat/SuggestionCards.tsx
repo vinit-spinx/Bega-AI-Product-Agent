@@ -23,8 +23,8 @@ export default function SuggestionCards({ onSend }: Props) {
           onClick={() => { trackEvent('suggestion_click', s.text); onSend(s.text); }}
           style={{ animationDelay: `${380 + idx * 45}ms` }}
           className="animate-fade-in px-4 py-2 rounded-full border border-bega-border-2
-                     bg-white text-[12px] text-bega-text-2
-                     hover:border-bega-border-3 hover:text-bega-text-1 hover:shadow-card
+                     bg-white text-[12px] font-medium uppercase tracking-wide text-bega-text-2
+                     hover:border-bega-black hover:text-bega-text-1 hover:shadow-card
                      transition-all duration-200 whitespace-nowrap"
         >
           {s.text}

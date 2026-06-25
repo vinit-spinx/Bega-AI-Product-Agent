@@ -83,8 +83,8 @@ export default function LineChart({ data, series, height = 200, showDots = true 
         {/* Grid lines */}
         {gridLines.map((g, i) => (
           <g key={i}>
-            <line x1={PAD.left} y1={g.y} x2={W - PAD.right} y2={g.y} stroke="#E8E5E0" strokeWidth="1" strokeDasharray={i === 0 ? '' : '0'} />
-            <text x={PAD.left - 6} y={g.y} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#9A9590">{g.label}</text>
+            <line x1={PAD.left} y1={g.y} x2={W - PAD.right} y2={g.y} stroke="#E6E6E3" strokeWidth="1" strokeDasharray={i === 0 ? '' : '0'} />
+            <text x={PAD.left - 6} y={g.y} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#97968F">{g.label}</text>
           </g>
         ))}
 
@@ -92,7 +92,7 @@ export default function LineChart({ data, series, height = 200, showDots = true 
         {xLabels.map(d => {
           const i = data.indexOf(d);
           return (
-            <text key={i} x={x(i)} y={H - 4} textAnchor="middle" fontSize="10" fill="#9A9590">{d.date}</text>
+            <text key={i} x={x(i)} y={H - 4} textAnchor="middle" fontSize="10" fill="#97968F">{d.date}</text>
           );
         })}
 

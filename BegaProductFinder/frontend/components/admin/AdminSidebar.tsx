@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { logout } from '@/services/admin/authService';
+import BegaLogo from '../shared/BegaLogo';
 
 interface NavItem {
   href: string;
@@ -21,7 +22,7 @@ interface NavSection {
 const NAV_SECTIONS: NavSection[] = [
   {
     key: 'cms',
-    label: 'CMS',
+    label: 'Content',
     items: [
       {
         href: '/admin/ai-actions',
@@ -63,7 +64,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       {
         href: '/admin/inquiries',
-        label: 'Contact Inquiries',
+        label: 'Inquiries',
         icon: (
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
             <path d="M3 4h14a1 1 0 011 1v9a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1z" />
@@ -84,11 +85,11 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     key: 'intelligence',
-    label: 'Intelligence',
+    label: 'Insights',
     items: [
       {
         href: '/admin/ai-insights',
-        label: 'AI Insights',
+        label: 'Overview',
         icon: (
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
             <path d="M3 15l4-6 4 3 3-5 3 4" />
@@ -98,7 +99,7 @@ const NAV_SECTIONS: NavSection[] = [
       },
       {
         href: '/admin/lead-pipeline',
-        label: 'Lead Intelligence',
+        label: 'Leads',
         icon: (
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
             <rect x="2.5" y="3.5" width="15" height="3.4" rx="1" />
@@ -109,7 +110,7 @@ const NAV_SECTIONS: NavSection[] = [
       },
       {
         href: '/admin/demand-intelligence',
-        label: 'Demand Intelligence',
+        label: 'Demand Trends',
         icon: (
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
             <path d="M10 2.5l7 3.5v7l-7 3.5-7-3.5v-7z" /><path d="M10 2.5v14M3 6l7 3.5 7-3.5" />
@@ -159,17 +160,8 @@ export default function AdminSidebar() {
 
       {/* ── Brand header ──────────────────────────────────────────────── */}
       <div className="flex-shrink-0 px-6 pt-6 pb-5 border-b border-bega-border-1">
-        <Link href="/admin" className="flex items-center gap-3.5 group">
-          <svg width="18" height="22" viewBox="0 0 20 27" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path fillRule="evenodd" clipRule="evenodd" fill="#1A1A1A"
-              d="M5.007,5.386 L5.007,11.272 C5.085,11.278 5.147,11.289 5.21,11.289 C6.935,11.289 8.661,11.304 10.387,11.284 C11.325,11.273 12.221,11.047 13.027,10.538 C13.776,10.064 14.208,9.391 14.226,8.477 C14.244,7.507 13.979,6.661 13.169,6.064 C12.45,5.534 11.617,5.374 10.753,5.371 C8.935,5.364 7.117,5.38 5.299,5.386 C5.208,5.387 5.118,5.386 5.007,5.386 Z
-              M5.005,22.619 C5.102,22.625 5.183,22.635 5.265,22.635 C7.028,22.635 8.791,22.651 10.554,22.626 C11.086,22.618 11.63,22.55 12.146,22.418 C13.243,22.137 14.134,21.561 14.57,20.432 C14.806,19.82 14.825,19.181 14.755,18.546 C14.624,17.356 14.049,16.448 12.978,15.899 C12.246,15.524 11.462,15.37 10.643,15.372 C8.862,15.375 7.08,15.374 5.298,15.375 C5.201,15.375 5.103,15.375 5.005,15.375 Z
-              M0,1.056 C0.092,1.049 0.184,1.035 0.276,1.035 C4.388,1.034 8.501,1.015 12.613,1.044 C14.357,1.056 15.953,1.588 17.286,2.773 C18.29,3.666 18.827,4.821 18.993,6.151 C19.126,7.21 19.141,8.272 18.798,9.298 C18.31,10.762 17.29,11.79 16.047,12.621 C15.946,12.688 15.843,12.751 15.742,12.816 C15.735,12.821 15.732,12.831 15.712,12.861 C15.795,12.907 15.877,12.953 15.961,12.997 C17.725,13.921 19.057,15.24 19.691,17.19 C20.037,18.254 20.048,19.351 19.929,20.449 C19.807,21.567 19.511,22.635 18.921,23.602 C17.958,25.18 16.521,26.093 14.798,26.598 C13.895,26.862 12.969,26.982 12.029,26.982 C8.084,26.983 4.138,26.982 0.193,26.983 C0.129,26.983 0.064,26.994 0,27 Z" />
-          </svg>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-bega-black leading-none">BEGA</p>
-            <p className="text-[9px] text-bega-text-3 tracking-[0.14em] uppercase mt-[3px]">Admin Panel</p>
-          </div>
+        <Link href="/admin" className="flex items-center group">
+          <BegaLogo width={88} height={27} />
         </Link>
       </div>
 

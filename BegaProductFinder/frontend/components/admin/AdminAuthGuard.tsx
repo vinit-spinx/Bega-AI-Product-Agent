@@ -22,7 +22,7 @@ export default function AdminAuthGuard({ children }: { children: React.ReactNode
   }, [pathname, router]);
 
   if (!ready) {
-    return <div className="h-full bg-[#F7F5F2]" />;
+    return <div className="h-full bg-bega-bg-1" />;
   }
 
   return <>{children}</>;

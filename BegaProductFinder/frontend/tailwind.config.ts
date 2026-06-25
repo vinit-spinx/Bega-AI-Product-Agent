@@ -13,21 +13,21 @@ const config: Config = {
           // Core
           black:  '#1A1A1A',
           white:  '#FFFFFF',
-          // Backgrounds (warm white scale)
+          // Backgrounds (neutral white/gray scale — matches bega-us.com)
           'bg-0': '#FFFFFF',
-          'bg-1': '#F7F5F2',
-          'bg-2': '#EDEBE7',
-          'bg-3': '#E2DFD9',
+          'bg-1': '#F7F7F6',
+          'bg-2': '#EFEFED',
+          'bg-3': '#E2E2DF',
           // Text
           'text-1': '#1A1A1A',
-          'text-2': '#5A5750',
-          'text-3': '#9A9590',
-          // Borders (warm gray)
-          'border-1': '#E8E5E0',
-          'border-2': '#D5D2CC',
-          'border-3': '#BFBBB5',
-          // Brand accent — warm architectural black
-          
+          'text-2': '#575652',
+          'text-3': '#97968F',
+          // Borders (neutral gray)
+          'border-1': '#E6E6E3',
+          'border-2': '#D3D3CF',
+          'border-3': '#BBBBB6',
+          // Footer — near-black, distinct from bega-black per bega-us.com's footer band
+          footer: '#0F1115',
           // Semantic
           success: '#2D6A4F',
           error:   '#B91C1C',
@@ -35,6 +35,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        serif: ['var(--font-serif)', 'Georgia', 'serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       boxShadow: {

@@ -30,7 +30,8 @@ export default function FurnitureCard({ item, sessionId }: FurnitureCardProps) {
 
   return (
     <div className="rounded-lg border border-bega-border-1 bg-white overflow-hidden animate-fade-in
-                    flex flex-col shadow-card hover:shadow-card-hover transition-shadow duration-200">
+                    flex flex-col shadow-card hover:shadow-card-hover hover:border-bega-border-2
+                    transition-all duration-200 hover:-translate-y-0.5">
       <div className="flex gap-0">
         {/* Product image */}
         {item.familyListPageImage && !imgError ? (

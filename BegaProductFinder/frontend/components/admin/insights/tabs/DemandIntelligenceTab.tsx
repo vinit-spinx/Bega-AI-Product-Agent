@@ -9,7 +9,7 @@ import SegmentedNav from '../SegmentedNav';
 import WorldMap from '../widgets/WorldMap';
 import { useGSAPEntrance, useGSAPScrollReveal } from '@/hooks/useGSAPEntrance';
 
-const CAT_COLORS = ['#1A1A1A', '#5A5750', '#9A9590', '#B5A99A', '#D5CFC9', '#E5E0DB'];
+const CAT_COLORS = ['#1A1A1A', '#575652', '#97968F', '#BBBBB6', '#D3D3CF', '#E6E6E3'];
 const HIGH_FREQ_LIMIT = 5;
 
 type Segment = 'category' | 'specification' | 'content' | 'geographic';
@@ -477,7 +477,7 @@ export default function DemandIntelligenceTab() {
   return (
     <div className="space-y-6">
       <AnimatedBanner
-        eyebrow="Demand Intelligence"
+        eyebrow="Demand Trends"
         title="What people want, and how content is performing"
         description=""
       />
