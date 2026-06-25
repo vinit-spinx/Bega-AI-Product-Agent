@@ -15,7 +15,7 @@ import SuggestionCards from '@/components/chat/SuggestionCards';
 // How long the light takes to fully expand — content fade-in below uses the exact
 // same delay/duration/ease so both animations run on an identical timeline.
 const GLOW_DELAY = 0.3;
-const GLOW_DURATION = 1.8;
+const GLOW_DURATION = 2.6;
 // Gentle ease-out cubic-bezier — front-loads the easing so it decelerates gradually
 // all the way to the end instead of the sharper acceleration of built-in curves.
 // The glow itself uses plain CSS @keyframes (see globals.css: lamp-fade-in /
