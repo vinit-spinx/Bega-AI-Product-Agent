@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import TourOverlay from './TourOverlay';
+import { recordTourEnded, recordTourShown, shouldShowTour } from '@/lib/tourStorage';
 
-const STORAGE_KEY = 'bega_tour_products_v1';
+// v2 — switched from sessionStorage (per-tab "seen once") to localStorage with a skip/retry
+// counter (see lib/tourStorage.ts), so bumping the key avoids misreading old v1 values.
+const STORAGE_KEY = 'bega_tour_products_v2';
 
 const ALL_STEPS = [
   {
@@ -41,12 +44,13 @@ export default function ProductTour({ hasProducts, onActiveChange }: Props) {
   useEffect(() => {
     if (!hasProducts) return;
     if (typeof window === 'undefined') return;
-    if (sessionStorage.getItem(STORAGE_KEY)) return;
+    if (!shouldShowTour(STORAGE_KEY)) return;
 
     // Wait for product cards to finish rendering
     const timer = setTimeout(() => {
       const available = ALL_STEPS.filter(s => !!document.querySelector(s.selector));
       if (available.length > 0) {
+        recordTourShown(STORAGE_KEY);
         setSteps(available);
         setStep(0);
         setActive(true);
@@ -57,14 +61,14 @@ export default function ProductTour({ hasProducts, onActiveChange }: Props) {
     return () => clearTimeout(timer);
   }, [hasProducts]);
 
-  const dismiss = () => {
+  const dismiss = (completed: boolean) => {
     setActive(false);
     onActiveChangeRef.current?.(false);
-    if (typeof window !== 'undefined') sessionStorage.setItem(STORAGE_KEY, '1');
+    recordTourEnded(STORAGE_KEY, completed);
   };
 
   const next = () => {
-    if (step + 1 >= steps.length) dismiss();
+    if (step + 1 >= steps.length) dismiss(true);
     else setStep(s => s + 1);
   };
 
@@ -79,7 +83,7 @@ export default function ProductTour({ hasProducts, onActiveChange }: Props) {
       step={step + 1}
       totalSteps={steps.length}
       onNext={next}
-      onSkip={dismiss}
+      onSkip={() => dismiss(false)}
     />
   );
 }

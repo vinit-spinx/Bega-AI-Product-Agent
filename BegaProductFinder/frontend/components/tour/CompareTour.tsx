@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import TourOverlay from './TourOverlay';
+import { recordTourEnded, recordTourShown, shouldShowTour } from '@/lib/tourStorage';
 
-const STORAGE_KEY = 'bega_tour_compare_v1';
+// v2 — switched from sessionStorage (per-tab "seen once") to localStorage with a skip/retry
+// counter (see lib/tourStorage.ts), so bumping the key avoids misreading old v1 values.
+const STORAGE_KEY = 'bega_tour_compare_v2';
 
 // Selectors are scoped to this comparison card's own message container (see messageId prop) —
 // chat history can hold multiple ComparisonCard instances, and an unscoped selector would
@@ -51,12 +54,13 @@ export default function CompareTour({ messageId, onActiveChange }: CompareTourPr
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (sessionStorage.getItem(STORAGE_KEY)) return;
+    if (!shouldShowTour(STORAGE_KEY)) return;
 
     const timer = setTimeout(() => {
       const allSteps = buildSteps(messageId);
       const available = allSteps.filter(s => !!document.querySelector(s.selector));
       if (available.length > 0) {
+        recordTourShown(STORAGE_KEY);
         setSteps(available);
         setStep(0);
         setActive(true);
@@ -67,14 +71,14 @@ export default function CompareTour({ messageId, onActiveChange }: CompareTourPr
     return () => clearTimeout(timer);
   }, [messageId]);
 
-  const dismiss = () => {
+  const dismiss = (completed: boolean) => {
     setActive(false);
     onActiveChangeRef.current?.(false);
-    if (typeof window !== 'undefined') sessionStorage.setItem(STORAGE_KEY, '1');
+    recordTourEnded(STORAGE_KEY, completed);
   };
 
   const next = () => {
-    if (step + 1 >= steps.length) dismiss();
+    if (step + 1 >= steps.length) dismiss(true);
     else setStep(s => s + 1);
   };
 
@@ -89,7 +93,7 @@ export default function CompareTour({ messageId, onActiveChange }: CompareTourPr
       step={step + 1}
       totalSteps={steps.length}
       onNext={next}
-      onSkip={dismiss}
+      onSkip={() => dismiss(false)}
     />
   );
 }
