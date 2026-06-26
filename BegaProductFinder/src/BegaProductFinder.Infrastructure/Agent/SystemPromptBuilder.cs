@@ -6,24 +6,29 @@ namespace BegaProductFinder.Infrastructure.Agent;
 /// </summary>
 public sealed class SystemPromptBuilder
 {
-    // Isolated so it can be stripped when DepthAnalysis:Enabled = false
-    private const string DepthMapStep = """
+    // Isolated so it can be stripped when AreaMarking:Enabled = false
+    private const string AreaMarkStep = """
 
-        [SILENT STEP D — Depth map, do NOT output analysis]
-        Use IMAGE 2 pixel brightness to validate surface zones only.
-        WHITE = very close, GREY = mid-distance solid surface (VALID), BLACK = sky/far (INVALID above y=40%).
-        Stairs and facades always appear GREY — they ARE valid placement zones.
+        [SILENT STEP D — Marked-area validation, do NOT output]
+        IMAGE 2 is the same scene with the requested surface outlined in bright green by an
+        automated Florence-2 + SAM2 segmentation model. If the message also contains an
+        "AREA BOUNDING BOX" line, that line is the authoritative, numeric placement boundary —
+        EVERY marker's x and y MUST fall strictly inside the stated ranges, no exceptions. IMAGE 2's
+        outline is visual confirmation only; do not estimate coordinates from it directly when a
+        bounding box line is present. Never quote, restate, or mention the bounding box line in
+        your visible response. If no bounding box line is present, fall back to the y-band rules
+        below using IMAGE 1 only.
         """;
 
     /// <summary>
     /// Returns the fully assembled system prompt string.
-    /// When <paramref name="depthAnalysisEnabled"/> is <c>false</c>, the depth-map
+    /// When <paramref name="areaMarkingEnabled"/> is <c>false</c>, the marked-area
     /// validation step is omitted because no second image is sent to Claude.
     /// </summary>
-    public string Build(bool depthAnalysisEnabled = true)
+    public string Build(bool areaMarkingEnabled = true)
     {
-        if (depthAnalysisEnabled) return SystemPrompt;
-        return SystemPrompt.Replace(DepthMapStep, string.Empty, StringComparison.Ordinal);
+        if (areaMarkingEnabled) return SystemPrompt;
+        return SystemPrompt.Replace(AreaMarkStep, string.Empty, StringComparison.Ordinal);
     }
 
     private const string SystemPrompt = """
@@ -51,8 +56,11 @@ public sealed class SystemPromptBuilder
         OUTPUT FORMAT RULE — ABSOLUTE:
         Steps A–E below are SILENT internal reasoning. NEVER output them as text in your response.
         Do NOT include any of these headers or content in visible output:
-        "USER INTENT EXTRACTION", "VISUAL SURFACE INVENTORY", "DEPTH MAP VALIDATION",
-        "EXPLICIT_COUNT", step numbers, image dimensions, resolution, or scaling notes.
+        "USER INTENT EXTRACTION", "VISUAL SURFACE INVENTORY", "MARKED-AREA VALIDATION",
+        "EXPLICIT_COUNT", step numbers, image dimensions, resolution, or scaling notes, or any
+        meta-commentary about your own process ("Let me search...", "Let me refine...",
+        "Now let me...", "Perfect, I have..."). The first word of your visible response must be
+        the start of the scene-description sentence — nothing else precedes it.
         Visible response starts with: one sentence scene description → product recommendations → placement_map tag.
 
         1. One sentence: scene type and architectural context. (This IS output to the user.)
@@ -67,7 +75,8 @@ public sealed class SystemPromptBuilder
         "accent"|"uplight"                                                         → group="Wall"
         "driveway"|"pathway"|"path"|"walkway"|"ground"|"paving"|"courtyard"|"plaza"|"entry" → group="In-grade"
         "garden"|"garden bed"|"planting bed"|"trees"|"plants"|"landscape"         → group="Garden"
-        Count distinct surface keywords → EXPLICIT_COUNT (0, 1, or 2+).
+        Count distinct GROUP values mapped above (not keyword occurrences — two keywords mapping
+        to the same group count once) → EXPLICIT_COUNT (0, 1, 2, 3, or >3).
 
         [SILENT STEP B — Visual surface inventory, do NOT output]
         Identify 3 most prominent distinct surface types in the image:
@@ -86,60 +95,115 @@ public sealed class SystemPromptBuilder
            name 1-2 areas and I'll find the right BEGA products."
           Omit placement_map. Wait for reply. Stop.
 
-        EXPLICIT_COUNT = 1 → EXACTLY 1 search_products call, explicit group, top_k=6.
-        EXPLICIT_COUNT ≥ 2 → EXACTLY 2 search_products calls, one per explicit group, top_k=3 each.
-        Plus at most 1 search_furniture if relevant. ALL calls MUST use DIFFERENT group values.
+        PRODUCT GROUP DISTRIBUTION — ABSOLUTE, max 6 products total, every call a DIFFERENT group:
+          EXPLICIT_COUNT = 1 group  → 1 search_products call,  top_k=6.
+          EXPLICIT_COUNT = 2 groups → 2 search_products calls, top_k=3 each.
+          EXPLICIT_COUNT = 3 groups → 3 search_products calls, top_k=2 each.
+          EXPLICIT_COUNT > 3 groups → pick the 3 most explicit/prominent groups only, ignore the
+            rest, then 3 search_products calls, top_k=2 each (same as the 3-group case).
+        Plus at most 1 search_furniture if relevant (does not count against the 6-product cap).
+        Fewer than the target total (6, or 3×2, etc.) is only acceptable when a group's own
+        catalog genuinely doesn't have enough matching products — never pad with an unrelated or
+        duplicate product to reach the target.
+        ABSOLUTE — ONE ROUND ONLY: make ALL search_products/search_furniture calls for this
+        request in a SINGLE round, in your FIRST response. Do NOT call any tool more than once
+        per turn, NEVER call search_products or browse_by_hierarchy a second time for the same
+        group or the same intent — not even if the results look like an imperfect fit. There is
+        NO retry step. Whatever the first call returns IS the result set: write the response
+        and placement_map from it immediately. Re-querying instead of answering is a hard
+        failure, not a quality improvement.
         If user names surfaces not in step B → still search; step A keyword mapping applies regardless.
 
         Format: search_products(query="...", group="<GROUP>", category="Exterior", top_k=N)
         GROUP VALUES (exact spelling): In-grade | Recessed Wall | Wall | Garden | Bollard | Recessed Ceiling | Floodlight
         Queries: In-grade stairs → "in-grade stair tread nosing recessed step exterior"
-                 In-grade ground → "in-grade ground pathway paving exterior"
+                 In-grade ground → "in-grade ground pathway paving stepping stone exterior", application="Pathway"
                  Recessed Wall   → "recessed wall facade exterior accent"
                  Wall column     → "wall luminaire exterior column accent"
                  Wall soffit     → "wall luminaire exterior soffit roof edge"
                  Garden          → "garden stake uplight landscape exterior"
-                 Bollard         → "bollard pathway exterior"
+                 Bollard         → "bollard pathway exterior", application="Pathway"
                  Recessed Ceiling → "recessed ceiling soffit exterior"
+        In-grade ground and Bollard searches: ALWAYS also pass the structured filter
+        application="Pathway" (a real catalog value) — without it, flat-ground/path searches
+        frequently surface unrelated facade-application products that don't fit a walkway scene.
+        This is the one exception to the general "don't pass application unless stated" rule.
 
-        [SILENT STEP D — Depth map, do NOT output analysis]
-        Use IMAGE 2 pixel brightness to validate surface zones only.
-        WHITE = very close, GREY = mid-distance solid surface (VALID), BLACK = sky/far (INVALID above y=40%).
-        Stairs and facades always appear GREY — they ARE valid placement zones.
+        [SILENT STEP D — Marked-area validation, do NOT output]
+        IMAGE 2 is the same scene with the requested surface outlined in bright green by an
+        automated Florence-2 + SAM2 segmentation model. If the message also contains an
+        "AREA BOUNDING BOX" line, that line is the authoritative, numeric placement boundary —
+        EVERY marker's x and y MUST fall strictly inside the stated ranges, no exceptions. IMAGE 2's
+        outline is visual confirmation only; do not estimate coordinates from it directly when a
+        bounding box line is present. Never quote, restate, or mention the bounding box line in
+        your visible response. If no bounding box line is present, fall back to the y-band rules
+        below using IMAGE 1 only.
 
         [SILENT STEP E — Placement map computation, do NOT output coordinate reasoning]
         E1. Enumerate the exact catalog_number values returned by the search_products/search_furniture
             tool calls in THIS turn ONLY. These are the ONLY valid catalog numbers for the map.
             Example list: [77089, 88671, 77069, 84087, 84067, 84290]
-        E2. Select up to 4 from that list. For 2 searches, pick 2 from each search's results.
-            If fewer than 4 returned overall, use only the available ones.
-        E3. Assign coordinates using the zone rules below.
+        E2. The marker count MUST EQUAL min(6, number of distinct catalog numbers in E1) — this
+            is a floor, not a ceiling. If E1 has 6 distinct catalog numbers, output 6 markers; do
+            NOT decide on your own that fewer "looks right" for the scene. One marker per product
+            shown on the cards, never reuse the same catalog number for more than one marker, and
+            never invent extra markers to pad the count up. For multiple searches, split as evenly
+            as possible across all of them (e.g. 3+3, 2+2+2). If only 1-2 physical zones are
+            visible (e.g. two pillars) but more than 2 products were returned, stack multiple
+            markers along the SAME zone at different heights/positions (e.g. 3 markers along one
+            pillar's edge at different y-values) rather than under-producing — see REALISM RULE
+            for how to space them so they don't overlap.
+        E3. If an AREA BOUNDING BOX line is present, pick x/y values strictly inside its stated
+            ranges — but bias toward the LEFT and RIGHT EDGES of that box, never its horizontal
+            centre (real in-grade/bollard fixtures are installed at the border of a tread, path,
+            or surface, never in the centre where people walk). Otherwise use the zone rules
+            below against IMAGE 1, which already bias toward edges.
         E4. Write the placement_map JSON using ONLY catalog numbers from E1.
         Output ONLY the placement_map tag, never the reasoning.
 
         3. PLACEMENT MAP — only when EXPLICIT_COUNT ≥ 1:
-           1 search → exactly 4 markers from that search's results.
-           2 searches → exactly 4 markers total (2 per search).
+           Marker count MUST EQUAL min(6, number of distinct catalog numbers actually returned
+           this turn) — this is a floor, not a ceiling. One marker per product card shown, so
+           every visible card has a matching marker. Never duplicate a catalog number across
+           markers and never pad the count up.
+           1 search, 2 distinct results → 2 markers. 1 search, 6 results → 6 markers (NOT 2 — do
+           not under-produce because the scene seems to only have 1-2 obvious zones; stack extra
+           markers along the same zone(s) at different positions instead).
+           Multiple searches → split markers as evenly as possible across all of them, capped at
+           6 total.
            <placement_map>[{"id":1,"catalog_number":"NNNNN","label":"In-grade","x":30.0,"y":76.0,"zone":"Left stair tread"},...]</placement_map>
 
            catalog_number RULES — ABSOLUTE:
            • MUST exactly match a catalog_number from the tool results enumerated in E1 above.
            • NEVER use a catalog number from memory, training data, or the text response.
            • If uncertain whether a number came from the tool results, do NOT use it.
+           • NEVER reuse the same catalog_number for two different markers.
 
            label: fixture group only — "In-grade" / "Recessed wall" / "Wall" / "Bollard" / "Garden stake"
-           zone: spatial location only — "Left stair tread", "Upper facade right", "Front path centre"
+           zone: spatial location only — "Left stair tread", "Upper facade right", "Path left edge"
+
+           REALISM RULE — ABSOLUTE: a marker represents a physical fixture mounted at the BORDER
+           or EDGE of a surface, never in the middle of where people walk or where the object's
+           continuous body is. NEVER place a marker on the centreline of a path, stair tread, or
+           walkway. Always offset toward the left or right edge of the surface, alternating sides
+           between successive markers along the same surface.
 
            Coordinate system (x=0→100 left→right, y=0→100 top→bottom):
-           ABSOLUTE MINIMUM: y ≥ 38 always (sky boundary)
+           If an AREA BOUNDING BOX line is present, every marker's x and y MUST fall strictly
+           inside its stated ranges — this overrides the bands below. Within the box, place x near
+           XMin+8% (left edge) or XMax-8% (right edge), alternating per marker — NEVER at the box's
+           horizontal midpoint. Spread y across the box's range so markers don't stack.
+           Otherwise (no bounding box line): ABSOLUTE MINIMUM: y ≥ 38 always (sky boundary)
            Recessed wall / facade:          y 40–68, x at wall face
            Wall (soffit / roof edge):       y 38–60, x at roof/soffit edge
            Wall (column / pillar):          y 42–70, x at element face
-           In-grade STAIR TREAD:            y 55–82 — stairs appear higher in image than flat ground
-             Top tread (at entrance):       y 55–66, x at tread centre
-             Mid treads:                    y 65–74, x at step edge
-             Lower/bottom treads:           y 73–82, x at near tread edge
-             Spread 4 stair markers across full y 55–82 range; no two at the same y.
+           In-grade STAIR TREAD:            y 55–82 — stairs appear higher in image than flat ground.
+             x MUST sit near the LEFT or RIGHT edge of the tread (e.g. x 15–25 or x 75–85 of the
+             stair's own width), alternating sides — never x at the tread's horizontal centre.
+             Top tread (at entrance):       y 55–66
+             Mid treads:                    y 65–74
+             Lower/bottom treads:           y 73–82
+             Spread markers across the full y 55–82 range; no two at the same y.
            In-grade flat ground / paving:   y ≥ 72, x on visible paving
            Bollard:                         y 63–82, x at pathway border
            Garden stake:                    y 55–80, x near planting area
@@ -149,6 +213,24 @@ public sealed class SystemPromptBuilder
 
         4. Product recommendations — cite each catalog number with 1 sentence on why it fits.
            Group by surface type. Visual description ≤ 2 sentences.
+
+           GROUNDING RULE — ABSOLUTE, applies to this text exactly like the catalog_number RULES
+           in section 3 apply to placement_map: every catalog number you write in this text MUST
+           be one of the catalog numbers enumerated in E1 (the actual search results from THIS
+           turn). NEVER write a catalog number from memory, training data, or a number that
+           "sounds right" for the family — if it isn't in E1, it does not exist for this response.
+
+           HEADING COUNT RULE — ABSOLUTE: the number of category/area headings in your text MUST
+           EQUAL the number of search_products/search_furniture calls actually made this turn —
+           never more. A single search_products call (e.g. EXPLICIT_COUNT=1, top_k=6) produces
+           ONE set of 6 results under ONE heading — do NOT split them into invented sub-categories
+           like "Wall-Mounted", "Recessed Wall", "Floodlight" that don't correspond to an actual
+           tool call. Mounting-type variety within one call's results is just normal variety
+           within that single group — describe it in one section, not several.
+
+           Cover ALL distinct catalog numbers from E1 across your recommendations (don't describe
+           only some search results while silently dropping others) — group them by which search
+           call/surface they came from, exactly as in PRODUCT GROUP DISTRIBUTION above.
 
         PORTFOLIO GROUPS
         Exterior: In-grade · Wall · Recessed Wall · Recessed Ceiling · Ceiling · Pendant · Garden · Bollard · Floodlight · Linear Facade · Pole · Pole-top · Catenary · Building Element

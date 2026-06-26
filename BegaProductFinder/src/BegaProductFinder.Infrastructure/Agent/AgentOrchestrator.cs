@@ -30,14 +30,14 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     private readonly IEmbeddingService _embedding;
     private readonly IVectorSearchService _vectorSearch;
     private readonly SystemPromptBuilder _promptBuilder;
-    private readonly DepthAnalysisService _depthAnalysis;
+    private readonly AreaMarkingService _areaMarking;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     private readonly string _apiKey;
     private readonly string _model;
     private readonly int _maxTokens;
     private readonly int _maxToolIterations;
-    private readonly bool _depthAnalysisEnabled;
+    private readonly bool _areaMarkingEnabled;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -57,6 +57,14 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         @"<placement_map>\s*(\[[\s\S]*?\])\s*</placement_map>",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    // BEGA catalog numbers are 5-6 digit tokens — used to verify the model's prose actually
+    // cites real returned products rather than plausible-sounding invented ones (see the
+    // grounding safety net in RunAsync). Narrow enough to not match prices/lumens/voltages,
+    // which are either shorter or split by commas/decimals in the response text.
+    private static readonly System.Text.RegularExpressions.Regex _catalogNumberRegex = new(
+        @"\b\d{5,6}\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public AgentOrchestrator(
         IHttpClientFactory httpFactory,
         IChatSessionService sessionService,
@@ -68,7 +76,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         IEmbeddingService embedding,
         IVectorSearchService vectorSearch,
         SystemPromptBuilder promptBuilder,
-        DepthAnalysisService depthAnalysis,
+        AreaMarkingService areaMarking,
         IConfiguration config,
         ILogger<AgentOrchestrator> logger)
     {
@@ -82,7 +90,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         _embedding = embedding;
         _vectorSearch = vectorSearch;
         _promptBuilder = promptBuilder;
-        _depthAnalysis = depthAnalysis;
+        _areaMarking = areaMarking;
         _logger = logger;
 
         _apiKey = config["Anthropic:ApiKey"]
@@ -90,7 +98,7 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         _model = ResolveModel(config["Anthropic:Model"] ?? "sonnet");
         _maxTokens = config.GetValue<int>("Anthropic:MaxTokens", 2048);
         _maxToolIterations = config.GetValue<int>("Anthropic:MaxToolIterations", 5);
-        _depthAnalysisEnabled = config.GetValue<bool>("DepthAnalysis:Enabled", true);
+        _areaMarkingEnabled = config.GetValue<bool>("AreaMarking:Enabled", true);
     }
 
     /// <inheritdoc/>
@@ -147,29 +155,44 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         foreach (var msg in history)
             apiMessages.Add(TextMessage(msg.Role, msg.Content));
 
-        // When an image is present, request a depth map from the local Depth Anything V2 sidecar.
-        // The depth map gives Claude explicit surface-distance information so placement markers
-        // land on physical surfaces rather than sky or mid-air regions.
-        string? depthMapBase64 = null;
-        if (imageBase64 is not null && _depthAnalysisEnabled)
+        // When an image is present, derive a Florence-2-friendly area label from the user's
+        // message (no extra model call — deterministic keyword lookup) and ask the local
+        // Florence-2 + SAM2 sidecar to outline the matching region. The outline's bounding box
+        // is computed locally from pixel data (see AreaMarkingService) and passed to Claude as
+        // exact numeric coordinates — far more reliable than asking a vision model to eyeball
+        // where a polygon outline falls.
+        string? markedAreaBase64 = null;
+        AreaBoundingBox? areaBoundingBox = null;
+        if (imageBase64 is not null && _areaMarkingEnabled)
         {
-            depthMapBase64 = await _depthAnalysis.GetDepthMapBase64Async(imageBase64, ct);
-            if (depthMapBase64 is not null)
-                _logger.LogDebug("Depth map acquired ({Chars} base64 chars) — sending two-image vision request", depthMapBase64.Length);
+            var areaQuery = AreaQueryExtractor.Extract(userMessage);
+            if (areaQuery is not null)
+            {
+                var markResult = await _areaMarking.GetMarkedAreaAsync(imageBase64, areaQuery, ct);
+                markedAreaBase64 = markResult?.ImageBase64;
+                areaBoundingBox = markResult?.BoundingBox;
+                if (markedAreaBase64 is not null)
+                    _logger.LogDebug("Area marking acquired for query '{Query}' ({Chars} base64 chars, bbox={HasBox}) — sending two-image vision request", areaQuery, markedAreaBase64.Length, areaBoundingBox is not null);
+                else
+                    _logger.LogDebug("Area marking unavailable for query '{Query}' — sending single-image vision request", areaQuery);
+            }
             else
-                _logger.LogDebug("Depth analysis unavailable — sending single-image vision request");
+            {
+                _logger.LogDebug("No area label derived from user message — sending single-image vision request");
+            }
         }
         else if (imageBase64 is not null)
         {
-            _logger.LogDebug("Depth analysis disabled — sending single-image vision request");
+            _logger.LogDebug("Area marking disabled — sending single-image vision request");
         }
 
         // When an image is present, build a content-block array message (vision turn).
-        // When a depth map is also available, include it as a second labeled image block.
+        // When a marked-area image is also available, include it as a second labeled image block,
+        // plus an explicit numeric bounding box block when the outline could be detected.
         // Otherwise fall back to a plain text string (standard turn, no extra tokens).
-        apiMessages.Add(BuildUserMessage(userMessage, imageBase64, imageMimeType, depthMapBase64));
+        apiMessages.Add(BuildUserMessage(userMessage, imageBase64, imageMimeType, markedAreaBase64, areaBoundingBox));
 
-        var systemPrompt = _promptBuilder.Build(_depthAnalysisEnabled);
+        var systemPrompt = _promptBuilder.Build(_areaMarkingEnabled);
         var tools = _toolDefinitions;
 
         string finalAssistantText = string.Empty;
@@ -177,28 +200,57 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
         // Track dispatched tool calls to skip exact duplicates (same name + input hash)
         var dispatchedToolKeys = new HashSet<string>();
 
+        // Only the LAST iteration's structured results (Products/Furniture/etc.) are ever shown
+        // to the user. Earlier iterations are typically self-corrections — Claude realizing its
+        // first search used the wrong filters/group and redoing it — so surfacing their stale
+        // results alongside the corrected ones would be actively misleading (the bad first
+        // attempt's cards would fill the frontend's display cap before the real results ever
+        // arrived). Replaced wholesale at the start of every iteration, never accumulated.
+        var latestStructuredChunks = new List<AgentStreamChunk>();
+        var reachedCleanFinalTurn = false;
+        var hadFatalError = false;
+
         for (int iteration = 0; iteration < _maxToolIterations; iteration++)
         {
             var accText = new StringBuilder();
             var toolCalls = new List<CollectedToolCall>();
             string? stopReason = null;
+            var hadError = false;
 
+            // Text deltas are buffered, never streamed live, here. An iteration's text can only
+            // be judged safe to show once we know whether it was followed by tool_use blocks in
+            // the SAME message — if so, that text is internal planning narration ("Let me refine
+            // the search...") that must never reach the user; only the text from the iteration
+            // that ends with zero tool calls is the genuine final answer.
             await foreach (var (eventChunk, toolCall, reason) in
                 StreamTurnAsync(apiMessages, systemPrompt, tools, ct))
             {
-                if (eventChunk is not null) yield return eventChunk;
+                if (eventChunk?.Type == AgentStreamEventType.Error)
+                {
+                    yield return eventChunk;
+                    hadError = true;
+                }
+                else if (eventChunk?.Type == AgentStreamEventType.TextDelta && eventChunk.Content is not null)
+                {
+                    accText.Append(eventChunk.Content);
+                }
+
                 if (toolCall is not null) toolCalls.Add(toolCall);
                 if (reason is not null) stopReason = reason;
-
-                if (eventChunk?.Type == AgentStreamEventType.TextDelta && eventChunk.Content is not null)
-                    accText.Append(eventChunk.Content);
             }
 
             var assistantText = accText.ToString();
             finalAssistantText = assistantText;
 
+            if (hadError) { hadFatalError = true; break; }
+
             if (toolCalls.Count == 0 || stopReason is "max_tokens" or "stop_sequence")
+            {
+                reachedCleanFinalTurn = true;
                 break;
+            }
+
+            latestStructuredChunks = new List<AgentStreamChunk>();
 
             // Build assistant message containing text + tool use blocks
             var assistantContent = new JsonArray();
@@ -230,11 +282,20 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
 
             var dispatchResults = await Task.WhenAll(dispatchTasks);
 
-            // Emit SSE chunks and build the tool-result array sequentially (safe for yield)
+            // Build the tool-result array; structured SSE chunks are collected (not yielded yet)
+            // so only the winning iteration's results ever reach the frontend — see comment above.
+            var seenThisRound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < toolCalls.Count; i++)
             {
                 var (resultJson, sseChunk) = dispatchResults[i];
-                if (sseChunk is not null) yield return sseChunk;
+                if (sseChunk is not null)
+                {
+                    // Cross-call distinctness within this round — if a second fixture group's
+                    // call returns a catalog number already returned by another call in the same
+                    // round, drop it rather than showing the same product twice.
+                    var deduped = DedupeAgainstSeen(sseChunk, seenThisRound);
+                    if (deduped is not null) latestStructuredChunks.Add(deduped);
+                }
                 toolResultsArray.Add(new JsonObject
                 {
                     ["type"] = "tool_result",
@@ -246,9 +307,37 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             apiMessages.Add(new JsonObject { ["role"] = "user", ["content"] = toolResultsArray });
         }
 
-        // Parse <suggested_actions> out of the final response text before saving to history.
-        // The raw tag is streamed to the frontend as text_delta (frontend renders it as pills),
-        // but keeping it in session history adds ~50-100 tokens of XML noise to every future turn.
+        // MaxToolIterations was exhausted while Claude was still mid tool-call chain (e.g.
+        // repeated self-correction across searches/group lookups) — it never reached a turn
+        // with zero tool calls, so finalAssistantText is just that last iteration's internal
+        // planning narration ("Let me browse the Wall family directly...") and was never meant
+        // to be shown as-is. Replace it with a grounded summary of whatever real results were
+        // gathered, or a plain apology if the chain produced nothing usable at all.
+        if (!hadFatalError && !reachedCleanFinalTurn)
+        {
+            _logger.LogWarning(
+                "MaxToolIterations ({Max}) exhausted without a clean final turn for session {SessionId} — discarding dangling narration text",
+                _maxToolIterations, sessionId);
+            finalAssistantText = latestStructuredChunks.Count > 0
+                ? BuildGroundedFallbackText(latestStructuredChunks)
+                : "I wasn't able to narrow down the best match in time — could you rephrase or name the specific area again (e.g. \"stair tread\" or \"pillar\")?";
+        }
+
+        // The set of catalog numbers actually being displayed (from the winning iteration only)
+        // — used below to validate placement_map markers against what the user can actually see.
+        var returnedCatalogNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var chunk in latestStructuredChunks)
+        {
+            if (chunk.Products is not null)
+                foreach (var p in chunk.Products) returnedCatalogNumbers.Add(p.CatalogNumber);
+            if (chunk.FurnitureItems is not null)
+                foreach (var f in chunk.FurnitureItems) returnedCatalogNumbers.Add(f.CatalogNumber);
+        }
+
+        // Parse <suggested_actions> out of the final response text before it's ever shown to the
+        // user or saved to history — the raw tag must never reach the frontend as text (it's
+        // rendered separately as pills), and keeping it in session history would add ~50-100
+        // tokens of XML noise to every future turn.
         var textToSave = finalAssistantText;
         List<string>? parsedActions = null;
         var saMatch = _suggestedActionsRegex.Match(finalAssistantText);
@@ -269,7 +358,67 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             catch { /* malformed JSON — tag stripped from history */ }
         }
 
+        // Grounding safety net for the prose itself — the same principle as the placement_map
+        // guard below, applied to the visible recommendation text. Despite explicit prompt
+        // rules, the model can cite plausible-sounding catalog numbers that don't match the
+        // actual search results (inventing "ideal" near-miss numbers instead of accepting what
+        // the real catalog returned). Zero tolerance: even ONE ungrounded citation makes the
+        // whole response untrustworthy (a user reading it can't tell which lines are real), so
+        // any mismatch — not just a total failure — replaces the prose with a deterministic
+        // summary built directly from the real results instead.
+        if (returnedCatalogNumbers.Count > 0)
+        {
+            var citedCatalogNumbers = _catalogNumberRegex.Matches(textToSave)
+                .Select(m => m.Value)
+                .Distinct()
+                .ToList();
+            var groundedCitations = citedCatalogNumbers.Count(n => returnedCatalogNumbers.Contains(n));
+
+            if (citedCatalogNumbers.Count > 0 && groundedCitations < citedCatalogNumbers.Count)
+            {
+                _logger.LogWarning(
+                    "Discarding partially/fully ungrounded recommendation text — cited [{Cited}] but actual results this turn were [{Returned}]",
+                    string.Join(",", citedCatalogNumbers), string.Join(",", returnedCatalogNumbers));
+                textToSave = BuildGroundedFallbackText(latestStructuredChunks);
+            }
+        }
+
+        // Server-side guarantee — prompt instructions alone aren't reliable enough: drop any
+        // marker whose catalog number wasn't actually returned this turn (hallucination guard),
+        // collapse duplicate catalog numbers to their first occurrence (the model has repeatedly
+        // emitted the same catalog number for multiple marker ids, which the product-card list
+        // then renders as fewer cards than markers), cap at the same 6-product max enforced for
+        // search results, and re-sequence ids 1..N.
+        if (parsedPlacementMap is { Count: > 0 })
+        {
+            const int maxMarkers = 6;
+            var seenCatalogNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var filtered = new List<PlacementMapItem>();
+            foreach (var item in parsedPlacementMap)
+            {
+                if (returnedCatalogNumbers.Count > 0 && !returnedCatalogNumbers.Contains(item.CatalogNumber))
+                    continue;
+                if (!seenCatalogNumbers.Add(item.CatalogNumber))
+                    continue;
+                filtered.Add(item);
+                if (filtered.Count == maxMarkers) break;
+            }
+            parsedPlacementMap = filtered
+                .Select((item, idx) => item with { Id = idx + 1 })
+                .ToList();
+        }
+
         // yield must be outside try/catch (CS1626)
+        foreach (var chunk in latestStructuredChunks)
+            yield return chunk;
+
+        // Text is sent as a single chunk rather than replayed token-by-token: it was buffered
+        // for the entire winning iteration (see comment above the loop) precisely so the
+        // <suggested_actions>/<placement_map> tags could be stripped before anything reaches the
+        // user — replaying the raw per-token deltas here would re-leak those tags as literal text.
+        if (!string.IsNullOrEmpty(textToSave))
+            yield return new AgentStreamChunk { Type = AgentStreamEventType.TextDelta, Content = textToSave };
+
         if (parsedActions?.Count > 0)
             yield return new AgentStreamChunk { Type = AgentStreamEventType.SuggestedActions, SuggestedActions = parsedActions };
 
@@ -790,6 +939,8 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
             p.LuminaireType,
             p.LedWattage,
             p.LumenOutputLm,
+            p.BeamAngleDeg,
+            p.Distribution,
             p.Voltage,
             p.ControlProtocol,
             p.Application,
@@ -836,57 +987,72 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
     /// <list type="bullet">
     ///   <item>No image → plain text string (minimal tokens).</item>
     ///   <item>Image only → [image, text] content blocks.</item>
-    ///   <item>Image + depth map → [label, original image, label, depth map, text] blocks.
-    ///         Labels tell Claude which image is which so it can correlate depth values
-    ///         with scene regions when computing placement-map coordinates.</item>
+    ///   <item>Image + marked-area image → [label, original image, label, marked-area image,
+    ///         (bounding box note), text] blocks. Labels tell Claude which image is which; the
+    ///         bounding box note (when the outline could be detected) gives exact numeric
+    ///         x/y percent ranges so placement-map coordinates don't depend on the model
+    ///         visually estimating where the polygon outline falls.</item>
     /// </list>
     /// </summary>
     private static JsonObject BuildUserMessage(
         string text,
         string? imageBase64,
         string? imageMimeType,
-        string? depthMapBase64 = null)
+        string? markedAreaBase64 = null,
+        AreaBoundingBox? areaBoundingBox = null)
     {
         if (imageBase64 is null || imageMimeType is null)
             return TextMessage("user", text);
 
-        // Two-image vision turn: original scene + depth map
-        if (depthMapBase64 is not null)
+        // Two-image vision turn: original scene + Florence-2/SAM2 marked-area overlay
+        if (markedAreaBase64 is not null)
         {
-            return new JsonObject
+            var content = new JsonArray
             {
-                ["role"] = "user",
-                ["content"] = new JsonArray
+                new JsonObject { ["type"] = "text", ["text"] = "IMAGE 1 — Original scene:" },
+                new JsonObject
                 {
-                    new JsonObject { ["type"] = "text", ["text"] = "IMAGE 1 — Original scene:" },
-                    new JsonObject
+                    ["type"] = "image",
+                    ["source"] = new JsonObject
                     {
-                        ["type"] = "image",
-                        ["source"] = new JsonObject
-                        {
-                            ["type"]       = "base64",
-                            ["media_type"] = imageMimeType,
-                            ["data"]       = imageBase64
-                        }
-                    },
-                    new JsonObject
+                        ["type"]       = "base64",
+                        ["media_type"] = imageMimeType,
+                        ["data"]       = imageBase64
+                    }
+                },
+                new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = "IMAGE 2 — Same scene with the requested area outlined in bright green (Florence-2 + SAM2 segmentation):"
+                },
+                new JsonObject
+                {
+                    ["type"] = "image",
+                    ["source"] = new JsonObject
                     {
-                        ["type"] = "text",
-                        ["text"] = "IMAGE 2 — Depth map (light/white pixels = surfaces CLOSE to camera; dark/black pixels = surfaces FAR from camera or open sky):"
-                    },
-                    new JsonObject
-                    {
-                        ["type"] = "image",
-                        ["source"] = new JsonObject
-                        {
-                            ["type"]       = "base64",
-                            ["media_type"] = "image/png",
-                            ["data"]       = depthMapBase64
-                        }
-                    },
-                    new JsonObject { ["type"] = "text", ["text"] = text }
+                        ["type"]       = "base64",
+                        ["media_type"] = DetectImageMimeType(markedAreaBase64),
+                        ["data"]       = markedAreaBase64
+                    }
                 }
             };
+
+            if (areaBoundingBox is not null)
+            {
+                content.Add(new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] =
+                        $"AREA BOUNDING BOX — computed directly from the green outline pixels in IMAGE 2: " +
+                        $"x from {areaBoundingBox.XMinPct} to {areaBoundingBox.XMaxPct}, " +
+                        $"y from {areaBoundingBox.YMinPct} to {areaBoundingBox.YMaxPct} (percent of image, 0=top-left). " +
+                        "This is the authoritative, numeric placement boundary."
+                });
+            }
+
+            content.Add(new JsonObject { ["type"] = "text", ["text"] = text });
+
+            return new JsonObject { ["role"] = "user", ["content"] = content };
         }
 
         // Single-image vision turn
@@ -908,6 +1074,89 @@ public sealed class AgentOrchestrator : IAgentOrchestrator
                 new JsonObject { ["type"] = "text", ["text"] = text }
             }
         };
+    }
+
+    /// <summary>
+    /// Detects the actual image format from base64 magic-byte prefixes. The area-marking
+    /// sidecar's encoder isn't guaranteed to produce PNG — Anthropic rejects a base64 image
+    /// whose declared <c>media_type</c> doesn't match its real bytes with a 400, so the
+    /// declared type must always be derived from the data rather than assumed.
+    /// </summary>
+    private static string DetectImageMimeType(string base64)
+    {
+        if (base64.StartsWith("iVBORw0KGgo", StringComparison.Ordinal)) return "image/png";
+        if (base64.StartsWith("/9j/", StringComparison.Ordinal)) return "image/jpeg";
+        if (base64.StartsWith("R0lGOD", StringComparison.Ordinal)) return "image/gif";
+        if (base64.StartsWith("UklGR", StringComparison.Ordinal)) return "image/webp";
+        return "image/png";
+    }
+
+    /// <summary>
+    /// Filters a Products/Furniture SSE chunk down to items whose catalog number hasn't been
+    /// returned earlier in this same dispatch round, adding the survivors to <paramref name="seen"/>
+    /// in the process. Returns <c>null</c> if every item in the chunk was already seen (so the
+    /// caller can skip adding an empty chunk). Chunk types other than Products/Furniture pass
+    /// through unchanged.
+    /// </summary>
+    private static AgentStreamChunk? DedupeAgainstSeen(AgentStreamChunk chunk, HashSet<string> seen)
+    {
+        if (chunk.Products is not null)
+        {
+            var deduped = new List<ProductSearchResult>();
+            foreach (var p in chunk.Products)
+                if (seen.Add(p.CatalogNumber)) deduped.Add(p);
+            return deduped.Count == 0 ? null : chunk with { Products = deduped };
+        }
+
+        if (chunk.FurnitureItems is not null)
+        {
+            var deduped = new List<FurnitureSearchResult>();
+            foreach (var f in chunk.FurnitureItems)
+                if (seen.Add(f.CatalogNumber)) deduped.Add(f);
+            return deduped.Count == 0 ? null : chunk with { FurnitureItems = deduped };
+        }
+
+        return chunk;
+    }
+
+    /// <summary>
+    /// Builds a plain, deterministic recommendation summary directly from the actual search
+    /// results — used as a fallback when the model's own prose fails the grounding check, or
+    /// when MaxToolIterations was exhausted before a clean final turn. Guarantees every catalog
+    /// number and spec shown is real, at the cost of losing the model's contextual phrasing.
+    /// </summary>
+    private static string BuildGroundedFallbackText(List<AgentStreamChunk> chunks)
+    {
+        var lines = new List<string>();
+
+        foreach (var chunk in chunks)
+        {
+            if (chunk.Products is not null)
+            {
+                foreach (var p in chunk.Products)
+                {
+                    var specs = new List<string>();
+                    if (!string.IsNullOrEmpty(p.LedWattage)) specs.Add(p.LedWattage);
+                    if (p.LumenOutputLm is { } lm) specs.Add($"{lm} lm");
+                    if (p.BeamAngleDeg is { } beam) specs.Add($"{beam}° beam");
+                    if (!string.IsNullOrEmpty(p.Distribution)) specs.Add(p.Distribution);
+                    if (!string.IsNullOrEmpty(p.ControlProtocol)) specs.Add(p.ControlProtocol);
+                    if (p.DnpPrice is > 0) specs.Add($"${p.DnpPrice:N0} DNP");
+                    var specsText = specs.Count > 0 ? $" — {string.Join(", ", specs)}" : string.Empty;
+                    lines.Add($"{p.CatalogNumber} ({p.FamilyName ?? "BEGA luminaire"}){specsText}");
+                }
+            }
+
+            if (chunk.FurnitureItems is not null)
+            {
+                foreach (var f in chunk.FurnitureItems)
+                    lines.Add($"{f.CatalogNumber} ({f.FamilyName ?? "BEGA furniture"})");
+            }
+        }
+
+        return lines.Count == 0
+            ? "Here are the matching BEGA products from the catalog."
+            : "Here are the matching BEGA products from the catalog:\n\n" + string.Join("\n", lines);
     }
 
     /// <summary>

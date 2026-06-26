@@ -51,8 +51,8 @@ builder.Services.AddHttpClient("Anthropic", client =>
     client.DefaultRequestHeaders.Add("x-api-key", config["Anthropic:ApiKey"] ?? string.Empty);
 });
 
-// Named client for Depth Anything V2 sidecar — timeout set per-request from config
-builder.Services.AddHttpClient("DepthAnalysis", client =>
+// Named client for the Florence-2 + SAM2 area-marking sidecar — timeout set per-request from config
+builder.Services.AddHttpClient("AreaMarking", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(2);
 });
@@ -72,8 +72,8 @@ builder.Services.AddScoped<ISessionFinalizationService, SessionFinalizationServi
 builder.Services.AddHostedService<SessionSweepService>();
 builder.Services.AddScoped<IRepresentativeService, RepresentativeService>();
 
-// ── Depth analysis sidecar (Depth Anything V2) ───────────────────────────────
-builder.Services.AddScoped<DepthAnalysisService>();
+// ── Area marking sidecar (Florence-2 + SAM2) ─────────────────────────────────
+builder.Services.AddScoped<AreaMarkingService>();
 
 // ── Agent ─────────────────────────────────────────────────────────────────────
 builder.Services.AddScoped<SystemPromptBuilder>();

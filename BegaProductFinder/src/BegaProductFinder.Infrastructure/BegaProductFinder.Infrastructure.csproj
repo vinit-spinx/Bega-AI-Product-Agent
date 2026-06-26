@@ -33,6 +33,9 @@
     <!-- PDF spec sheet extraction -->
     <PackageReference Include="PdfPig" Version="0.1.14" />
 
+    <!-- Decoding the area-marking sidecar's annotated image to locate its green outline -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+
     <!-- HTTP resilience for PDF downloads -->
     <PackageReference Include="Polly" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />

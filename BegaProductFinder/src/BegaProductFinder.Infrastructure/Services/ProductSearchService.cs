@@ -62,9 +62,13 @@ public sealed class ProductSearchService : IProductSearchService
         filters ??= new ProductSearchFilters();
         var topK = Math.Max(filters.TopK, 6);
         var exclusionCount = filters.ExcludedCatalogNumbers?.Length ?? 0;
-        // Widen the vector candidate pool proportionally when items are excluded,
-        // so SQL still has enough rows to return topK non-excluded results.
-        var candidateK = Math.Max(topK * 8, 80) + exclusionCount * topK;
+        // Widen the vector candidate pool well beyond topK so the diversity pass below has a
+        // real pool of distinct families to choose from. A narrow pool (e.g. 8x) frequently
+        // returns 60-80 nearest neighbours that are ALL the same generically-named family (e.g.
+        // FamilyName="Wall luminaire" covering many physically different SKUs) — the diversity
+        // pass then finds only one distinct family and silently backfills the rest with more
+        // of that same family, defeating the point of asking for variety.
+        var candidateK = Math.Max(topK * 25, 150) + exclusionCount * topK;
 
         // Build full query list: primary + expanded (capped at 4 expanded to control latency)
         var allQueries = new List<string>(1 + Math.Min(expandedQueries.Count, 4)) { query };
@@ -176,8 +180,13 @@ public sealed class ProductSearchService : IProductSearchService
         // 1. When no explicit group filter is set: enforce one product per group first,
         //    so results are drawn from different luminaire families (Bollard, Wall, In-grade…)
         //    rather than all from the single group whose embeddings dominate the vector space.
-        // 2. Within each group: one product per FamilyName so size/wattage variants of the
-        //    same visual design don't crowd out other options.
+        // 2. Within each group: one product per FAMILY SLUG (not FamilyName!) so size/wattage
+        //    variants of the same visual design don't crowd out other options. FamilyName is a
+        //    broad catalog text label — e.g. 195 of 335 "Wall" products all share the literal
+        //    text "Wall luminaire" — while FamilySlug is the actual per-product-line identifier
+        //    that distinguishes them. Deduping on FamilyName alone collapses the majority of the
+        //    catalog into one indistinguishable bucket, which is why diversity silently failed
+        //    before this fix even with a wide candidate pool.
         var seenGroups  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenFamilies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenIds      = new HashSet<int>();
@@ -191,20 +200,48 @@ public sealed class ProductSearchService : IProductSearchService
             foreach (var p in scored)
             {
                 var groupKey  = p.GroupsName ?? p.GroupSlug ?? "unknown";
-                var familyKey = p.FamilyName ?? p.FamilySlug ?? p.CatalogNumber;
+                var familyKey = p.FamilySlug ?? p.FamilyName ?? p.CatalogNumber;
                 if (seenGroups.Add(groupKey) && seenFamilies.Add(familyKey) && seenIds.Add(p.ProductId))
                     diverse.Add(p);
                 if (diverse.Count >= topK) break;
             }
         }
 
-        // Pass 2: fill remaining slots with the best family-diverse products from any group
-        foreach (var p in scored)
+        // Pass 2: fill remaining slots with family-diverse products from any group. Each
+        // distinct family's BEST-scoring representative is collected first; if more distinct
+        // families are available than slots remaining, pick among the strongest candidates
+        // with mild randomisation (rather than always the literal top-N by score) so repeat
+        // searches for the same query don't show the identical 6 products every time, while
+        // still anchoring to genuinely well-matching families.
+        var slotsRemaining = topK - diverse.Count;
+        if (slotsRemaining > 0)
         {
-            if (diverse.Count >= topK) break;
-            var familyKey = p.FamilyName ?? p.FamilySlug ?? p.CatalogNumber;
-            if (seenFamilies.Add(familyKey) && seenIds.Add(p.ProductId))
-                diverse.Add(p);
+            var familyRepresentatives = new List<ProductSearchResult>();
+            var repFamilyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in scored)
+            {
+                if (seenIds.Contains(p.ProductId)) continue;
+                var familyKey = p.FamilySlug ?? p.FamilyName ?? p.CatalogNumber;
+                if (repFamilyKeys.Add(familyKey))
+                    familyRepresentatives.Add(p); // scored is already ordered best-first per family
+            }
+
+            if (familyRepresentatives.Count <= slotsRemaining)
+            {
+                foreach (var p in familyRepresentatives)
+                    if (seenFamilies.Add(p.FamilySlug ?? p.FamilyName ?? p.CatalogNumber) && seenIds.Add(p.ProductId))
+                        diverse.Add(p);
+            }
+            else
+            {
+                // A generous quality-anchored pool (avoids randomly surfacing a weak match from
+                // deep in the candidate list), shuffled, then take what's needed.
+                var pool = familyRepresentatives.Take(Math.Min(familyRepresentatives.Count, slotsRemaining * 4)).ToArray();
+                Random.Shared.Shuffle(pool);
+                foreach (var p in pool.Take(slotsRemaining))
+                    if (seenFamilies.Add(p.FamilySlug ?? p.FamilyName ?? p.CatalogNumber) && seenIds.Add(p.ProductId))
+                        diverse.Add(p);
+            }
         }
 
         // Pass 3: absolute backfill — any product not yet seen (handles catalogs with few families)
