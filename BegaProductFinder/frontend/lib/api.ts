@@ -48,6 +48,20 @@ export async function getProductDetail(catalogNumber: string): Promise<ProductDe
   }
 }
 
+export async function getProductAlternatives(
+  catalogNumber: string,
+  topK = 3,
+  excludeCatalogNumbers?: string[],
+): Promise<ProductSearchResult[]> {
+  const qs = new URLSearchParams({ topK: String(topK) });
+  if (excludeCatalogNumbers && excludeCatalogNumbers.length > 0) {
+    qs.set('exclude', excludeCatalogNumbers.join(','));
+  }
+  return apiFetch<ProductSearchResult[]>(
+    `/api/products/${encodeURIComponent(catalogNumber)}/alternatives?${qs.toString()}`,
+  );
+}
+
 export async function getHierarchy(): Promise<{
   categories: string[];
   groups: string[];

@@ -53,4 +53,18 @@ public interface IProductSearchService
     Task<ProductDetail?> GetProductDetailAsync(
         string catalogNumber,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Finds alternative products to the one identified by <paramref name="catalogNumber"/> —
+    /// other products in the same family (preferring the same sub-family), ranked by closeness
+    /// of lumen output to the source product. Pure SQL lookup, no embeddings or Claude calls.
+    /// </summary>
+    /// <param name="catalogNumber">BEGA catalog number of the source product.</param>
+    /// <param name="topK">Maximum number of alternatives to return.</param>
+    /// <param name="excludeCatalogNumbers">Catalog numbers to skip — typically products already shown earlier in the conversation, so repeated lookups surface new options.</param>
+    Task<List<ProductSearchResult>> GetAlternativesAsync(
+        string catalogNumber,
+        int topK = 3,
+        IReadOnlyList<string>? excludeCatalogNumbers = null,
+        CancellationToken ct = default);
 }

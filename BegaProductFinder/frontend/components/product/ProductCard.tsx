@@ -9,6 +9,8 @@ import DimensionTable from './DimensionTable';
 interface ProductCardProps {
   product: ProductSearchResult;
   sessionId?: string;
+  /** Loads alternatives for this product and renders them as a follow-up chat message — no Claude call involved. */
+  onViewAlternatives?: (catalogNumber: string) => Promise<void> | void;
 }
 
 function parseCct(json?: string | null): ColorTemperatureOption[] {
@@ -20,8 +22,9 @@ function parseCct(json?: string | null): ColorTemperatureOption[] {
   }
 }
 
-export default function ProductCard({ product, sessionId }: ProductCardProps) {
+export default function ProductCard({ product, sessionId, onViewAlternatives }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
   const { pin, unpin, isPinned } = useShortlist();
   const pinned = isPinned(product.catalogNumber);
 
@@ -36,6 +39,17 @@ export default function ProductCard({ product, sessionId }: ProductCardProps) {
     if (pinned) unpin(product.catalogNumber);
     else pin(product, 'product');
   };
+
+  const handleViewAlternatives = async () => {
+    if (!onViewAlternatives || loadingAlternatives) return;
+    setLoadingAlternatives(true);
+    try {
+      await onViewAlternatives(product.catalogNumber);
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  };
+
   const cctOptions = parseCct(product.colorTemperatureJson);
 
   return (
@@ -199,6 +213,17 @@ export default function ProductCard({ product, sessionId }: ProductCardProps) {
             >
               Technical Package
             </a>
+          )}
+          {onViewAlternatives && (
+            <button
+              onClick={handleViewAlternatives}
+              disabled={loadingAlternatives}
+              className="text-[11px] rounded border border-bega-border-2 text-bega-text-2
+                         hover:text-bega-text-1 hover:border-bega-border-3 px-3 py-1.5 transition-colors
+                         disabled:opacity-50 disabled:cursor-wait"
+            >
+              {loadingAlternatives ? 'Loading…' : 'View Alternatives'}
+            </button>
           )}
         </div>
       </div>

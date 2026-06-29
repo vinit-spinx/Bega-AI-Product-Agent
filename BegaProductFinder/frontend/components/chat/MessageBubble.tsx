@@ -27,6 +27,8 @@ interface MessageBubbleProps {
   /** Forwarded to ComparisonCard's CompareTour so the parent chat can suspend
    *  auto-scroll-to-bottom while the tour controls scroll position itself. */
   onTourActiveChange?: (active: boolean) => void;
+  /** Forwarded to each ProductCard's "View Alternatives" button. */
+  onViewAlternatives?: (catalogNumber: string) => Promise<void> | void;
 }
 
 // Inline BEGA B mark used as the AI avatar
@@ -52,7 +54,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function MessageBubble({ message, sessionId, isLast, hasBom, onSuggestedAction, onTourActiveChange }: MessageBubbleProps) {
+export default function MessageBubble({ message, sessionId, isLast, hasBom, onSuggestedAction, onTourActiveChange, onViewAlternatives }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const { entries: shortlistEntries } = useShortlist();
 
@@ -151,7 +153,12 @@ export default function MessageBubble({ message, sessionId, isLast, hasBom, onSu
                 <SectionLabel>Luminaires ({message.products.length})</SectionLabel>
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {message.products.map((p, i) => (
-                    <ProductCard key={`${p.productId}-${p.catalogNumber}-${i}`} product={p} sessionId={sessionId} />
+                    <ProductCard
+                      key={`${p.productId}-${p.catalogNumber}-${i}`}
+                      product={p}
+                      sessionId={sessionId}
+                      onViewAlternatives={onViewAlternatives}
+                    />
                   ))}
                 </div>
               </section>

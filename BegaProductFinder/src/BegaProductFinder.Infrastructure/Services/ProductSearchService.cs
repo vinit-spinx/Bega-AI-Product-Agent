@@ -412,6 +412,123 @@ public sealed class ProductSearchService : IProductSearchService
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<List<ProductSearchResult>> GetAlternativesAsync(
+        string catalogNumber,
+        int topK = 3,
+        IReadOnlyList<string>? excludeCatalogNumbers = null,
+        CancellationToken ct = default)
+    {
+        const string sourceSql = """
+            SELECT ProductId, FamilySlug, SubFamilyName, GroupsName, CategoryName, LumenOutputLm
+            FROM Products
+            WHERE CatalogNumber = @CatalogNumber
+            """;
+
+        await using var conn = new SqlConnection(_connectionString);
+        var source = await conn.QueryFirstOrDefaultAsync<SourceRow>(
+            new CommandDefinition(sourceSql, new { CatalogNumber = catalogNumber }, cancellationToken: ct));
+        if (source is null) return [];
+
+        // Catalog numbers already on screen (the source plus anything the caller has already
+        // shown earlier in the conversation) so repeated "View Alternatives" clicks surface new
+        // products instead of recycling ones the user has already seen.
+        var excluded = (excludeCatalogNumbers ?? [])
+            .Append(catalogNumber)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        const string selectColumns = """
+            ProductId, CatalogNumber, FamilyName, FamilySlug, SubFamilyName,
+            CategoryName, GroupSlug, GroupsName, LuminaireType,
+            FamilyListPageImage, FamilyTechImage,
+            LedWattage, WattageW, SystemWattageW, LumenOutputLm, BeamAngleDeg,
+            ColorTemperatureJson, Voltage, ControlProtocol, Application, Distribution,
+            IsAdaCompliant, IsExpressDelivery, LeadTime,
+            DimensionA, DimensionAFraction, DimensionB, DimensionBFraction,
+            DimensionC, DimensionCFraction,
+            DnpPrice, MsrpPrice,
+            SpecDocumentUrl, TechnicalDocumentUrl,
+            0.0 AS MatchScore
+            """;
+
+        var alternatives = new List<ProductSearchResult>(topK);
+        var seenIds = new HashSet<int> { source.ProductId };
+
+        // Tier 1: same family — prefer matching sub-family, then closest lumen output.
+        if (!string.IsNullOrWhiteSpace(source.FamilySlug))
+        {
+            var familySql = $"""
+                SELECT TOP (@TopK) {selectColumns}
+                FROM Products
+                WHERE FamilySlug = @FamilySlug
+                  AND ProductId <> @SourceId
+                  AND CatalogNumber NOT IN @Excluded
+                  AND {BuildFurnitureExclusionClause()}
+                ORDER BY
+                    CASE WHEN SubFamilyName = @SubFamilyName THEN 0 ELSE 1 END,
+                    ABS(ISNULL(LumenOutputLm, 0) - @SourceLumens)
+                """;
+
+            var familyResults = await conn.QueryAsync<ProductSearchResult>(
+                new CommandDefinition(familySql, new
+                {
+                    TopK = topK,
+                    source.FamilySlug,
+                    SourceId = source.ProductId,
+                    Excluded = excluded,
+                    source.SubFamilyName,
+                    SourceLumens = source.LumenOutputLm ?? 0
+                }, cancellationToken: ct));
+
+            foreach (var p in familyResults)
+            {
+                if (alternatives.Count >= topK) break;
+                if (seenIds.Add(p.ProductId)) alternatives.Add(p);
+            }
+        }
+
+        // Tier 2: same group + category — top up if the family alone didn't yield enough.
+        if (alternatives.Count < topK && !string.IsNullOrWhiteSpace(source.GroupsName))
+        {
+            var groupSql = $"""
+                SELECT TOP (@TopK) {selectColumns}
+                FROM Products
+                WHERE GroupsName = @GroupsName
+                  AND CategoryName = @CategoryName
+                  AND ProductId <> @SourceId
+                  AND CatalogNumber NOT IN @Excluded
+                  AND {BuildFurnitureExclusionClause()}
+                ORDER BY ABS(ISNULL(LumenOutputLm, 0) - @SourceLumens)
+                """;
+
+            var groupResults = await conn.QueryAsync<ProductSearchResult>(
+                new CommandDefinition(groupSql, new
+                {
+                    // Over-fetch since rows already picked in tier 1 get filtered out by seenIds below.
+                    TopK = topK + alternatives.Count,
+                    source.GroupsName,
+                    source.CategoryName,
+                    SourceId = source.ProductId,
+                    Excluded = excluded,
+                    SourceLumens = source.LumenOutputLm ?? 0
+                }, cancellationToken: ct));
+
+            foreach (var p in groupResults)
+            {
+                if (alternatives.Count >= topK) break;
+                if (seenIds.Add(p.ProductId)) alternatives.Add(p);
+            }
+        }
+
+        if (alternatives.Count == 0) return alternatives;
+
+        var projectMap = await FetchProjectsAsync(conn, alternatives.Select(p => p.ProductId).ToArray(), ct);
+        return alternatives.Select(p => p with { Projects = ProjectsFor(projectMap, p.ProductId) }).ToList();
+    }
+
+    private record SourceRow(int ProductId, string? FamilySlug, string? SubFamilyName, string? GroupsName, string? CategoryName, decimal? LumenOutputLm);
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private async Task<List<ProductSearchResult>> FetchProductsFromSqlAsync(

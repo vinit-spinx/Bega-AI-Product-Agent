@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useHeroContent } from '@/hooks/useAdminStore';
 import { ShortlistProvider, useShortlist, type ShortlistEntry } from '@/context/ShortlistContext';
-import { generateBom } from '@/lib/api';
+import { generateBom, getProductAlternatives } from '@/lib/api';
 import {
   COMPARE_ACTION, GENERATE_BOM_ACTION, REQUEST_QUOTE_ACTION, CONNECT_ACTION, FIND_REP_ACTION,
   detectConnectIntent,
@@ -142,6 +142,30 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
     }
   }, [shortlistEntries, pushFlowStep, updateMessage]);
 
+  // Locally fetches alternatives for one product and renders them as a follow-up chat
+  // message, the same way pushFlowStep drives the compare/BOM flow — no Claude call involved.
+  const handleViewAlternatives = useCallback(async (catalogNumber: string) => {
+    const assistantId = pushFlowStep(`Show alternatives for ${catalogNumber}`, { isStreaming: true });
+    try {
+      // Exclude every product already on screen so repeated clicks surface new options
+      // instead of recycling ones the user has already seen in this conversation.
+      const alreadyShown = messages.flatMap(m => m.products?.map(p => p.catalogNumber) ?? []);
+      const alternatives = await getProductAlternatives(catalogNumber, 3, alreadyShown);
+      updateMessage(assistantId, {
+        isStreaming: false,
+        content: alternatives.length > 0
+          ? `Here are some alternatives to ${catalogNumber}:`
+          : `No alternative products were found for ${catalogNumber}.`,
+        products: alternatives,
+      });
+    } catch (err) {
+      updateMessage(assistantId, {
+        isStreaming: false,
+        error: err instanceof Error ? err.message : 'Failed to load alternatives',
+      });
+    }
+  }, [pushFlowStep, updateMessage, messages]);
+
   // Used for anything that reaches Claude — typed input, suggestion-card clicks, and
   // freeform suggested-action pills. Invisibly prepends shortlist/BOM state so the agent
   // can route flow intent expressed in free text back onto the same suggested action pills.
@@ -276,6 +300,7 @@ function ChatContent({ showSuggestions = false, onReady }: ChatWindowProps) {
                 hasBom={lastBomReport != null}
                 onSuggestedAction={handleSuggestedAction}
                 onTourActiveChange={(active) => { tourActiveRef.current = active; }}
+                onViewAlternatives={handleViewAlternatives}
               />
             ))}
             <div ref={bottomRef} />
