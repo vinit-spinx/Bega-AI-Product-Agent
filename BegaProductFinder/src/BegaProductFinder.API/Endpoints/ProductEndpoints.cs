@@ -25,7 +25,11 @@ public static class ProductEndpoints
             .WithName("GetHierarchy")
             .WithSummary("Return the full category → group → family navigation hierarchy.");
 
-        // Must come last to avoid shadowing /families and /hierarchy
+        group.MapGet("/{catalogNumber}/alternatives", GetAlternativesAsync)
+            .WithName("GetProductAlternatives")
+            .WithSummary("Up to topK alternative products in the same family/group as the given catalog number.");
+
+        // Must come last to avoid shadowing /families, /hierarchy, and /{catalogNumber}/alternatives
         group.MapGet("/{catalogNumber}", GetDetailAsync)
             .WithName("GetProductDetail")
             .WithSummary("Full specifications for a single product by catalog number.");
@@ -85,6 +89,26 @@ public static class ProductEndpoints
         return detail is null
             ? Results.NotFound(new { catalogNumber, message = "Product not found in catalog." })
             : Results.Ok(detail);
+    }
+
+    // ── GET /api/products/{catalogNumber}/alternatives ────────────────────────
+
+    private static async Task<IResult> GetAlternativesAsync(
+        string catalogNumber,
+        [FromQuery] int topK,
+        [FromQuery] string? exclude,
+        IProductSearchService productSearch,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(catalogNumber))
+            return Results.BadRequest("catalogNumber is required.");
+
+        var clampedTopK = topK <= 0 ? 3 : Math.Clamp(topK, 1, 10);
+        var excluded = string.IsNullOrWhiteSpace(exclude)
+            ? null
+            : exclude.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var alternatives = await productSearch.GetAlternativesAsync(catalogNumber.Trim(), clampedTopK, excluded, ct);
+        return Results.Ok(alternatives);
     }
 
     // ── GET /api/products/families ────────────────────────────────────────────
