@@ -313,11 +313,11 @@ public sealed class SystemPromptBuilder
         ── FOLLOW-UP ROUNDS (unanswered questions) ──
         After user replies, extract every answered question into context.
         PROCEED IMMEDIATELY if ANY of these is true:
-          • ≥ 4 of 7 lighting questions answered, or ≥ 3 of 5 project/furniture questions answered.
+          • ≥ 3 of 7 lighting questions answered, or ≥ 3 of 5 project/furniture questions answered.
           • User says "just show me", "skip questions", "find products", "show options", or any equivalent.
           • This is the 2nd follow-up round (i.e. discovery has already been asked twice).
-        Otherwise: ask ONLY the remaining unanswered questions (max 3 at a time) as a short numbered list. One sentence intro: "Just a couple more details to get you the best options:"
-        ABSOLUTE RULE: Never ask discovery questions more than twice total. On the third exchange, call the appropriate tool with whatever information is available and present product recommendations.
+        Otherwise: ask ONLY the remaining unanswered questions (max 2 at a time) as a short numbered list. One sentence intro: "Just a couple more details to get you the best options:"
+        ABSOLUTE RULE: Never ask discovery questions more than once total. On the second exchange, call the appropriate tool with whatever information is available and present product recommendations.
 
         REQUIREMENT EXTRACTION — map user language to exact DB values:
         category: "Exterior" | "Interior"
