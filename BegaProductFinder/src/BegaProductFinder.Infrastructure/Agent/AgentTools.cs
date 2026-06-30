@@ -22,10 +22,25 @@ public static class AgentTools
 
     private static JsonObject SearchProducts() => Tool(
         "search_products",
-        "Search the Bega luminaire catalog by natural language. Always populate expanded_queries with 3–5 synonym strings for parallel vector retrieval. Pass every stated requirement as a structured filter field — do not embed filters only in the query string.",
+        "Search the Bega luminaire catalog by natural language. To search MULTIPLE fixture groups for one request (e.g. \"bollard and in-grade lights\"), populate the `requests` array with one {group, query} entry per group in THIS SINGLE call — never call this tool more than once per turn for product search. `top_k` is the TOTAL budget across all entries combined (split evenly, with automatic backfill if one group has fewer matches than its share). For a single-group request, either pass one entry in `requests`, or use the top-level `query`/`group` fields directly — both forms work. Always populate expanded_queries with 3–5 synonym strings for parallel vector retrieval. Pass every stated requirement (price, CCT, voltage, control protocol, application, etc.) as a structured filter field, applied uniformly across every group in `requests` — do not embed filters only in the query string.",
         new JsonObject
         {
-            ["query"] = Prop("string", "Primary natural language description e.g. 'DALI-2 garden bollard 24V DC'", req: true),
+            ["requests"] = new JsonObject
+            {
+                ["type"]        = "array",
+                ["description"] = "One entry per distinct fixture group/intent in this request. Use this INSTEAD of calling search_products multiple times when the user names more than one group (e.g. bollard AND in-grade). Omit if there's only one group — use the top-level query/group fields instead.",
+                ["items"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["group"] = Prop("string", "Luminaire type group e.g. 'Bollard', 'In-grade', 'Wall'", req: true),
+                        ["query"] = Prop("string", "Natural language description for THIS group e.g. 'bollard pathway exterior'", req: true)
+                    },
+                    ["required"] = new JsonArray { "group", "query" }
+                }
+            },
+            ["query"] = Prop("string", "Primary natural language description e.g. 'DALI-2 garden bollard 24V DC' — only used when `requests` is omitted"),
             ["expanded_queries"] = new JsonObject
             {
                 ["type"]        = "array",
@@ -34,7 +49,7 @@ public static class AgentTools
             },
             // ── Hierarchy ───────────────────────────────────────────────────
             ["category"]    = Prop("string",  "Exact value: 'Exterior' or 'Interior'"),
-            ["group"]       = Prop("string",  "Luminaire type group e.g. 'garden', 'in-grade', 'wall'"),
+            ["group"]       = Prop("string",  "Luminaire type group e.g. 'garden', 'in-grade', 'wall' — only used when `requests` is omitted"),
             ["family_name"] = Prop("string",  "Family name e.g. 'Garden bollard'"),
             // ── Wattage ─────────────────────────────────────────────────────
             ["min_wattage_w"] = Prop("number", "Minimum LED wattage (W)"),
@@ -85,9 +100,9 @@ public static class AgentTools
                 ["description"] = "Catalog numbers already shown to the user — pass all previously returned catalog numbers to get a genuinely new page of results.",
                 ["items"]       = new JsonObject { ["type"] = "string" }
             },
-            ["top_k"]            = Prop("integer", "Max results — pass 3 for text queries; pass 6 for vision/image queries")
+            ["top_k"]            = Prop("integer", "TOTAL result budget across ALL groups combined (default 6) — not per group.")
         },
-        ["query"]);
+        []);
 
     private static JsonObject GetProductDetail() => Tool(
         "get_product_detail",

@@ -37,6 +37,23 @@ public interface IProductSearchService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Searches multiple fixture groups in a single call — e.g. "Bollard" and "In-grade" for one
+    /// user request — running each group's search in parallel, then deterministically dividing
+    /// <paramref name="totalTopK"/> across the groups (even split, with backfill from groups that
+    /// have surplus matches when another group comes up short). Each group's search independently
+    /// guarantees the Group constraint is never dropped, even when other filters (price, CCT, etc.)
+    /// have to be relaxed to find any match at all — see <see cref="GroupSearchOutcome.ConstraintsRelaxed"/>.
+    /// </summary>
+    /// <param name="requests">One entry per distinct fixture group/intent.</param>
+    /// <param name="sharedFilters">Filters applied to every group (category, price, CCT, voltage, etc.) — the <c>Group</c> field on this is ignored; each request's own group is used instead.</param>
+    /// <param name="totalTopK">Total product budget across ALL groups combined.</param>
+    Task<List<GroupSearchOutcome>> SearchMultiGroupAsync(
+        List<GroupSearchRequest> requests,
+        ProductSearchFilters sharedFilters,
+        int totalTopK,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Applies precise numerical filters to product spec columns without vector search.
     /// Used for queries with exact numerical requirements e.g. "lumens >= 500".
     /// </summary>

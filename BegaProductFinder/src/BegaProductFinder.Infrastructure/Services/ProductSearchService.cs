@@ -61,6 +61,118 @@ public sealed class ProductSearchService : IProductSearchService
     {
         filters ??= new ProductSearchFilters();
         var topK = Math.Max(filters.TopK, 6);
+        var (products, _) = await SearchCoreAsync(query, expandedQueries, filters, topK, ct);
+        return products;
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<GroupSearchOutcome>> SearchMultiGroupAsync(
+        List<GroupSearchRequest> requests,
+        ProductSearchFilters sharedFilters,
+        int totalTopK,
+        CancellationToken ct = default)
+    {
+        if (requests.Count == 0) return [];
+
+        // Each group searches for up to the FULL combined budget, not just its eventual share —
+        // group-scoped searches are cheap (candidateK is capped to that group's own size, see
+        // SearchCoreAsync), and over-fetching here gives the allocation pass below a real pool
+        // to backfill from when one group comes up short.
+        var tasks = requests.Select(r =>
+            SearchCoreAsync(r.Query, [], sharedFilters with { Group = r.Group }, totalTopK, ct));
+        var coreResults = await Task.WhenAll(tasks);
+
+        // Cross-group de-duplication — first group to claim a catalog number keeps it. In
+        // practice groups never share catalog numbers, but this is a cheap defensive guarantee.
+        var seenCatalogNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pools = coreResults
+            .Select(r => r.Products.Where(p => seenCatalogNumbers.Add(p.CatalogNumber)).ToList())
+            .ToList();
+
+        // Even split of the total budget across groups, then backfill: any group that came up
+        // short hands its unused slots to groups with surplus pool, round-robin, until the
+        // budget is exhausted or no group has anything left to give.
+        var shares = ComputeEvenShares(totalTopK, requests.Count);
+        var taken = new int[requests.Count];
+        for (var i = 0; i < requests.Count; i++)
+            taken[i] = Math.Min(shares[i], pools[i].Count);
+
+        var shortfall = totalTopK - taken.Sum();
+        while (shortfall > 0)
+        {
+            var gaveAny = false;
+            for (var i = 0; i < requests.Count && shortfall > 0; i++)
+            {
+                if (taken[i] >= pools[i].Count) continue;
+                taken[i]++;
+                shortfall--;
+                gaveAny = true;
+            }
+            if (!gaveAny) break; // no group has any more to give
+        }
+
+        var outcomes = new List<GroupSearchOutcome>(requests.Count);
+        for (var i = 0; i < requests.Count; i++)
+        {
+            var groupProducts = pools[i].Take(taken[i]).ToList();
+            // Re-derive relaxed filters against the FINAL allocated subset — the backfill/take
+            // above can drop the very products that triggered relaxation in SearchCoreAsync, or
+            // (more commonly) keep them, so this is computed fresh rather than trusted as-is.
+            var relaxedFilters = DetectRelaxedFilters(sharedFilters, groupProducts);
+            string? note = groupProducts.Count == 0
+                ? $"No {requests[i].Group} products matched the given criteria."
+                : relaxedFilters.Count > 0
+                    ? $"To find {requests[i].Group} matches, these had to be relaxed: {string.Join(", ", relaxedFilters)}."
+                    : null;
+            outcomes.Add(new GroupSearchOutcome(requests[i].Group, groupProducts, relaxedFilters, note));
+        }
+
+        var allocatedIds = outcomes.SelectMany(o => o.Products).Select(p => p.ProductId).ToArray();
+        if (allocatedIds.Length == 0) return outcomes;
+
+        await using var conn = new SqlConnection(_connectionString);
+        var projectMap = await FetchProjectsAsync(conn, allocatedIds, ct);
+        return outcomes
+            .Select(o => o with { Products = o.Products.Select(p => p with { Projects = ProjectsFor(projectMap, p.ProductId) }).ToList() })
+            .ToList();
+    }
+
+    private static int[] ComputeEvenShares(int total, int groupCount)
+    {
+        var baseShare = total / groupCount;
+        var remainder = total % groupCount;
+        var shares = new int[groupCount];
+        for (var i = 0; i < groupCount; i++)
+            shares[i] = baseShare + (i < remainder ? 1 : 0);
+        return shares;
+    }
+
+    /// <summary>
+    /// The shared single-group search engine behind both <see cref="SearchByNaturalLanguageAsync(string,System.Collections.Generic.IReadOnlyList{string},ProductSearchFilters,System.Threading.CancellationToken)"/>
+    /// and <see cref="SearchMultiGroupAsync"/>. Embeds the query, runs a group-constrained pgvector
+    /// ANN search (with a candidate pool floor equal to the ENTIRE group's size, so a real match
+    /// is never missed to candidate-pool truncation), fetches matching SQL rows, and — critically —
+    /// relaxes filters in two tiers WITHOUT EVER dropping the Group constraint:
+    /// <list type="bullet">
+    /// <item><description>Tier 1: drop Category/FamilyName (inferred/cosmetic filters).</description></item>
+    /// <item><description>Tier 2: ALSO drop Application, price, CCT, voltage, control protocol,
+    /// distribution, dynamic light, compliance, ADA, and express-delivery (explicit user-stated
+    /// preferences). The returned <c>RelaxedFilters</c> list is computed by inspecting the ACTUAL
+    /// final products against the ORIGINAL filters (not just "was tier 2 needed") — so it names
+    /// exactly which constraint(s) are violated, e.g. ["maximum price"], rather than a vague
+    /// "something was relaxed" the caller would have to guess at.</description></item>
+    /// </list>
+    /// If Tier 2 still returns zero, the group genuinely has no match for this query at all and
+    /// an empty list is returned — this is correct, not a bug, and must never be papered over by
+    /// substituting a different group's products.
+    /// </summary>
+    private async Task<(List<ProductSearchResult> Products, List<string> RelaxedFilters)> SearchCoreAsync(
+        string query,
+        IReadOnlyList<string> expandedQueries,
+        ProductSearchFilters filters,
+        int topK,
+        CancellationToken ct)
+    {
         var exclusionCount = filters.ExcludedCatalogNumbers?.Length ?? 0;
         // Widen the vector candidate pool well beyond topK so the diversity pass below has a
         // real pool of distinct families to choose from. A narrow pool (e.g. 8x) frequently
@@ -86,7 +198,7 @@ public sealed class ProductSearchService : IProductSearchService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Embedding failed for query '{Query}' — falling back to SQL-only search", query);
-            return await FallbackSqlSearchAsync(query, filters, topK, ct);
+            return (await FallbackSqlSearchAsync(query, filters, topK, ct), []);
         }
 
         // When a group filter is present, pre-fetch its product IDs so the vector search
@@ -103,6 +215,14 @@ public sealed class ProductSearchService : IProductSearchService
                 _logger.LogInformation("Group '{Group}' has no products — ignoring group filter", filters.Group);
                 groupFilterIds = null;
             }
+            else
+            {
+                // Never truncate a group's own candidate pool below its full size — real BEGA
+                // groups are small enough (tens to a few hundred products) that an exhaustive
+                // ANN scan of the WHOLE group is cheap, and it guarantees a real match can never
+                // be missed just because it ranked outside an arbitrary top-N cut.
+                candidateK = Math.Max(candidateK, groupFilterIds.Length);
+            }
         }
 
         // Run vector search for every embedding in parallel, constrained to the group when set
@@ -116,7 +236,7 @@ public sealed class ProductSearchService : IProductSearchService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Vector search failed — falling back to SQL-only search");
-            return await FallbackSqlSearchAsync(query, filters, topK, ct);
+            return (await FallbackSqlSearchAsync(query, filters, topK, ct), []);
         }
 
         // Merge all hits — keep the highest score per product across all query passes
@@ -130,35 +250,58 @@ public sealed class ProductSearchService : IProductSearchService
             _logger.LogInformation(
                 "All {Count} vector searches returned no results for '{Query}' — falling back to SQL keyword search",
                 allQueries.Count, query);
-            return await FallbackSqlSearchAsync(query, filters, topK, ct);
+            return (await FallbackSqlSearchAsync(query, filters, topK, ct), []);
         }
 
         var candidateIds = scoreByProductId.Keys.ToArray();
 
-        // Fetch from SQL Server with filters applied
+        // Fetch from SQL Server with the full filter set applied
         var products = await FetchProductsFromSqlAsync(candidateIds, filters, ct);
 
-        // Safety fallback: if category/family filters eliminated all vector candidates,
-        // retry without them. Group is intentionally excluded from this fallback — the
-        // vector search was already group-constrained above, so 0 results here means the
-        // group genuinely has no match; ProjectRecommendationService will try the next group.
-        if (products.Count == 0 &&
-            (filters.Category is not null || filters.FamilyName is not null))
+        // Tier 1: cosmetic/inferred filters (Category, FamilyName) — relax first, no need to flag.
+        if (products.Count == 0 && (filters.Category is not null || filters.FamilyName is not null))
         {
             _logger.LogInformation(
                 "SQL category/family filter returned 0 for '{Query}' — retrying without those filters", query);
             products = await FetchProductsFromSqlAsync(
-                candidateIds,
-                filters with { Category = null, FamilyName = null },
-                ct);
+                candidateIds, filters with { Category = null, FamilyName = null }, ct);
         }
 
-        // Last resort: if vector candidates didn't match any SQL rows at all, fall back to keyword search
+        // Tier 2: explicit user-stated preferences (price, CCT, voltage, control, application,
+        // distribution, dynamic light, compliance, ADA, express). Group is NEVER included here —
+        // candidateIds are already scoped to the group (or to the full catalog when no group was
+        // requested), so relaxing these never lets a different group's products leak in.
         if (products.Count == 0)
         {
             _logger.LogInformation(
+                "SQL filters still returned 0 for '{Query}' after tier 1 — relaxing price/CCT/voltage/control/application", query);
+            products = await FetchProductsFromSqlAsync(
+                candidateIds,
+                filters with
+                {
+                    Category = null, FamilyName = null, Application = null,
+                    MinDnpPrice = null, MaxDnpPrice = null, ColorTemperatureK = null,
+                    Voltage = null, ControlProtocol = null, Distribution = null,
+                    DynamicLight = null, Compliance = null, AdaCompliant = null, ExpressDelivery = null,
+                },
+                ct);
+        }
+
+        // If a group was requested and STILL nothing matched even fully relaxed, that group
+        // genuinely has zero candidates similar enough to the query to be worth showing — return
+        // empty rather than falling through to a catalog-wide keyword search that could surface
+        // a completely different, unrequested group (the exact bug this refactor fixes).
+        if (products.Count == 0)
+        {
+            if (filters.Group is not null)
+            {
+                _logger.LogInformation("Group '{Group}' has zero matches for '{Query}' even fully relaxed — reporting empty", filters.Group, query);
+                return ([], []);
+            }
+
+            _logger.LogInformation(
                 "SQL returned 0 rows for vector candidates on '{Query}' — falling back to keyword search", query);
-            return await FallbackSqlSearchAsync(query, filters, topK, ct);
+            return (await FallbackSqlSearchAsync(query, filters, topK, ct), []);
         }
 
         // Exclude furniture from luminaire search results
@@ -252,13 +395,54 @@ public sealed class ProductSearchService : IProductSearchService
                 diverse.Add(p);
         }
 
+        var relaxedFilters = DetectRelaxedFilters(filters, diverse);
+
         if (diverse.Count > 0)
         {
             await using var projectConn = new SqlConnection(_connectionString);
             var projectMap = await FetchProjectsAsync(projectConn, diverse.Select(p => p.ProductId).ToArray(), ct);
-            return diverse.Select(p => p with { Projects = ProjectsFor(projectMap, p.ProductId) }).ToList();
+            return (diverse.Select(p => p with { Projects = ProjectsFor(projectMap, p.ProductId) }).ToList(), relaxedFilters);
         }
-        return diverse;
+        return (diverse, relaxedFilters);
+    }
+
+    /// <summary>
+    /// Verifies the FINAL product set against the ORIGINAL (pre-relaxation) filters and returns
+    /// the human-readable name of every explicit constraint that at least one returned product
+    /// violates. This is computed from the actual data, not from "which relaxation tier ran" —
+    /// so it's accurate even when only some products in the set fail a given constraint, and it
+    /// never reports a constraint as relaxed when the real results genuinely satisfy it.
+    /// </summary>
+    private static List<string> DetectRelaxedFilters(ProductSearchFilters original, List<ProductSearchResult> products)
+    {
+        var relaxed = new List<string>();
+        if (products.Count == 0) return relaxed;
+
+        if (original.MaxDnpPrice.HasValue && products.Any(p => p.DnpPrice is null || p.DnpPrice > original.MaxDnpPrice))
+            relaxed.Add("maximum price");
+        if (original.MinDnpPrice.HasValue && products.Any(p => p.DnpPrice is null || p.DnpPrice < original.MinDnpPrice))
+            relaxed.Add("minimum price");
+        if (original.ColorTemperatureK.HasValue && products.Any(p =>
+                p.ColorTemperatureJson?.Contains($"\"kelvin\":{original.ColorTemperatureK}") != true))
+            relaxed.Add("color temperature");
+        if (original.Voltage is not null && products.Any(p =>
+                p.Voltage?.Contains(original.Voltage, StringComparison.OrdinalIgnoreCase) != true))
+            relaxed.Add("voltage");
+        if (original.ControlProtocol is not null && products.Any(p =>
+                p.ControlProtocol?.Contains(original.ControlProtocol, StringComparison.OrdinalIgnoreCase) != true))
+            relaxed.Add("control protocol");
+        if (original.Application is not null && products.Any(p =>
+                p.Application?.Contains(original.Application, StringComparison.OrdinalIgnoreCase) != true))
+            relaxed.Add("application");
+        if (original.Distribution is not null && products.Any(p =>
+                p.Distribution?.Contains(original.Distribution, StringComparison.OrdinalIgnoreCase) != true))
+            relaxed.Add("light distribution");
+        if (original.AdaCompliant == true && products.Any(p => !p.IsAdaCompliant))
+            relaxed.Add("ADA compliance");
+        if (original.ExpressDelivery == true && products.Any(p => !p.IsExpressDelivery))
+            relaxed.Add("express delivery");
+
+        return relaxed;
     }
 
     /// <inheritdoc/>
@@ -691,10 +875,25 @@ public sealed class ProductSearchService : IProductSearchService
 
         // Structured filter conditions carried from the original request.
         // These MUST be preserved in the fallback — dropping them causes wrong products
-        // (e.g. returning non-DALI products when DALI was explicitly requested).
+        // (e.g. returning non-DALI products when DALI was explicitly requested). Group and
+        // FamilyName are included here too — this method is normally only reached for ungrouped
+        // queries or genuine embedding/vector infra failures (SearchCoreAsync now reports
+        // empty rather than reaching here for an ordinary group+filter zero-match), but if a
+        // group filter ever DOES arrive here, it must never be silently dropped in favour of a
+        // catalog-wide keyword match.
         var structuredConditions = new List<string>();
         var structuredParams = new DynamicParameters();
 
+        if (!string.IsNullOrWhiteSpace(filters.Group))
+        {
+            structuredConditions.Add("GroupsName = @Group");
+            structuredParams.Add("Group", filters.Group);
+        }
+        if (!string.IsNullOrWhiteSpace(filters.FamilyName))
+        {
+            structuredConditions.Add("FamilyName = @FamilyName");
+            structuredParams.Add("FamilyName", filters.FamilyName);
+        }
         if (!string.IsNullOrWhiteSpace(filters.Category))
         {
             structuredConditions.Add("CategoryName = @Category");
